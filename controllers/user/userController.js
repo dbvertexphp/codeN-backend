@@ -1,0 +1,3527 @@
+import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
+import UserModel from '../../models/user/userModel.js';
+import { sendFormEmail } from '../../config/mail.js';
+import PageModel from '../../models/admin/pageModel.js';
+import generateToken from '../../config/generateToken.js';
+import Country from '../../models/admin/country.model.js';
+import State from '../../models/admin/state.model.js';
+import City from '../../models/admin/city.model.js';
+import College from '../../models/admin/college.model.js';
+import ClassModel from '../../models/admin/Class/class.model.js';
+import Subject from '../../models/admin/Subject/subject.model.js';
+import SubSubject from '../../models/admin/Sub-subject/subSubject.model.js';
+import Topic from '../../models/admin/Topic/topic.model.js';
+import Chapter from '../../models/admin/Chapter/chapter.model.js';
+import MCQ from '../../models/admin/MCQs/mcq.model.js';
+import { OAuth2Client } from 'google-auth-library';
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+import SubscriptionPlan from '../../models/admin/SubscriptionPlan/scriptionplan.model.js';
+import TransactionModel from '../../models/admin/Transaction/Transaction.js';
+import Rating from '../../models/admin/Rating.js';
+import Course from '../../models/admin/Course/course.model.js';
+import Video from '../../models/admin/Video/video.model.js';
+import VideoProgress from '../../models/admin/Video/videoprogess.js';
+import Tag from '../../models/admin/Tags/tag.model.js';
+import TestAttempt from '../../models/user/testAttemptModel.js';
+import Bookmark from '../../models/admin/bookmarkModel.js';
+import admin from 'firebase-admin';
+import Faculty from '../../models/admin/faculty/faculty.model.js';
+import CustomTestAttempt from '../../models/user/customTestAttempt.model.js';
+import { enforceSubscription } from '../../utils/subscriptionHelper.js';
+import PromoCode from '../../models/admin/promo/promo.model.js';
+import Subscription from "../../models/Subscription.js";
+
+const updateUserChapterProgress = async (userId, chapterId) => {
+  const user = await UserModel.findById(userId);
+
+  // Agar user nahi milta ya chapter pehle se added hai, toh purana count return karo
+  if (!user || user.completedChapters.includes(chapterId)) {
+    return user ? user.completedModulesCount : 0;
+  }
+
+  // Agar naya chapter hai toh update karo
+  const updatedUser = await UserModel.findByIdAndUpdate(
+    userId,
+    {
+      $addToSet: { completedChapters: chapterId },
+      $inc: { completedModulesCount: 1 },
+    },
+    { new: true }
+  );
+
+  return updatedUser.completedModulesCount;
+};
+
+//working krishna
+// export const loginByGoogle = async (req, res, next) => {
+//   try {
+//     const { token } = req.body;
+
+//     if (!token) {
+//       return res.status(400).json({ message: 'Google ID token is required' });
+//     }
+
+//     // ✅ REAL TOKEN VERIFY
+//     // ✅ SECURE TOKEN VERIFY (NO GOOGLE HTTP CALL)
+//     let payload;
+
+//     try {
+//       const ticket = await client.verifyIdToken({
+//         idToken: token,
+//         audience: process.env.GOOGLE_CLIENT_ID,
+//       });
+
+//       payload = ticket.getPayload();
+//     } catch (err) {
+//       return res.status(401).json({ message: 'Invalid Google token' });
+//     }
+
+//     if (!payload?.email || !payload?.sub) {
+//       return res.status(400).json({ message: 'Invalid Google token payload' });
+//     }
+
+//     const email = payload.email.toLowerCase().trim();
+//     const googleId = payload.sub;
+//     const name = payload.name || 'Google User';
+//     const picture = payload.picture || null; // 👈 GOOGLE PROFILE IMAGE
+
+//     let user = await UserModel.findOne({ email });
+
+//     if (!user) {
+//       user = await UserModel.create({
+//         name,
+//         email,
+//         googleId,
+//         profileImage: picture,
+//         signUpBy: 'google',
+//         isEmailVerified: true,
+//         isMobileVerified: false,
+//         role: 'user',
+//       });
+//     } else {
+//       if (!user.googleId) user.googleId = googleId;
+
+//       if (!user.profileImage && picture) {
+//         user.profileImage = picture; // 👈 ADD THIS
+//       }
+//       if (user.signUpBy === 'email' && !user.isEmailVerified) {
+//         user.isEmailVerified = true;
+//         user.signUpBy = 'google';
+//       }
+//       await user.save();
+//     }
+
+//     if (user.status !== 'active') {
+//       return res
+//         .status(403)
+//         .json({ message: 'Account is blocked or inactive' });
+//     }
+
+//     const { accessToken, refreshToken } = generateToken(user._id); // updated below
+//     // 🔽 ADD THIS
+//     user.refreshToken = refreshToken;
+//     await user.save();
+//     const safeUser = user.toObject();
+//     delete safeUser.password;
+//     delete safeUser.otp;
+//     delete safeUser.otpExpiresAt;
+//     delete safeUser.refreshToken;
+
+//     return res.status(200).json({
+//       accessToken,
+//       refreshToken,
+//       user: safeUser,
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+export const loginByGoogle = async (req, res, next) => {
+  console.log('Server time before verify:', new Date().toISOString());
+  try {
+    const { token } = req.body;
+    console.log('Incoming Token:', token ? 'Token Received' : 'No Token');
+
+    if (!token) {
+      return res.status(400).json({ message: 'Google ID token is required' });
+    }
+    console.log('Token Length:', token.length);
+    console.log('Token Starts With:', token.substring(0, 10));
+    let decodedToken;
+    try {
+      // Backend project ID log kar rahe hain verify karne ke liye
+      const currentProjectId = admin.app().options.projectId;
+      console.log('🔍 Verifying token for project:', currentProjectId);
+      console.log('Token Length:', token.length);
+      console.log('Token Starts With:', token.substring(0, 10));
+      // Firebase Token Verify karna
+      decodedToken = await admin.auth().verifyIdToken(token);
+      console.log('✅ Token VERIFIED successfully!');
+      console.log('Decoded UID:', decodedToken.uid);
+      console.log('Decoded email:', decodedToken.email);
+      console.log('Full payload:', JSON.stringify(decodedToken, null, 2));
+    } catch (err) {
+      console.error('❌ VERIFY ERROR DETAILS:');
+      console.error('Error code:', err.code);
+      console.error('Error message:', err.message);
+      console.error('Full error object:', err);
+      return res.status(401).json({
+        message: 'Invalid or Expired Firebase Token',
+        error_detail: err.message,
+      });
+    }
+
+    // Yahan tak tabhi pahunchega jab token SUCCESSFUL verify ho chuka ho
+    const email = decodedToken.email?.toLowerCase().trim();
+    const googleId = decodedToken.uid;
+    const name = decodedToken.name || 'Google User';
+    const picture = decodedToken.picture || null;
+
+    if (!email) {
+      return res
+        .status(400)
+        .json({ message: 'Invalid Google token payload: Email missing' });
+    }
+
+    // --- Database Logic ---
+    let user = await UserModel.findOne({ email });
+
+    if (!user) {
+      // Naya User Banana
+      user = await UserModel.create({
+        name,
+        email,
+        googleId,
+        profileImage: picture,
+        signUpBy: 'google',
+        isEmailVerified: true,
+        role: 'user',
+        trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        isTrialExpired: false,
+      });
+      console.log('🆕 New User Created via Google Sign-In');
+    } else {
+      // Existing User Update karna
+      let isUpdated = false;
+      if (!user.googleId) {
+        user.googleId = googleId;
+        isUpdated = true;
+      }
+      if (!user.profileImage && picture) {
+        user.profileImage = picture;
+        isUpdated = true;
+      }
+
+      if (isUpdated) await user.save();
+      console.log('🏠 Existing User Logged In');
+    }
+    // 🔐 Subscription / Trial Check
+    // if (!(await enforceSubscription(user._id, res))) return;
+
+    // JWT Token generation (Backend specific)
+    const { accessToken, refreshToken } = generateToken(user._id);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    const safeUser = user.toObject();
+    delete safeUser.password; // Password agar ho toh security ke liye delete karein
+    delete safeUser.refreshToken;
+
+    return res.status(200).json({
+      success: true,
+      accessToken,
+      refreshToken,
+      user: safeUser,
+    });
+  } catch (err) {
+    console.error('🔥 Global Google Login Error:', err);
+    return res.status(500).json({
+      message: 'Internal Server Error during Google Login',
+      error_detail: err.message,
+    });
+  }
+};
+const generateOtp = () => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+export const register = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const {
+      name,
+      email,
+      mobile,
+      address,
+      countryName, // 👈 user se aayega
+      stateId,
+      cityId,
+      collegeName,
+      classId,
+      admissionYear,
+      password,
+    } = req.body;
+
+    let finalClassId = classId;
+    if (finalClassId === '') finalClassId = null;
+
+    // 1️⃣ Basic Validation
+    if (
+      !name ||
+      !email ||
+      !password ||
+      // !countryName ||
+      !stateId ||
+      !cityId ||
+      !collegeName
+    ) {
+      if (session.inTransaction()) await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message:
+          'All fields (Name, Email, Password, Country, State, City, College Name) are required.',
+      });
+    }
+
+    // 2️⃣ COUNTRY AUTO FIND-OR-CREATE
+    let country = null;
+    let countryId = null;
+
+    if (countryName && countryName.trim() !== '') {
+      country = await Country.findOne({
+        name: { $regex: new RegExp(`^${countryName.trim()}$`, 'i') },
+      });
+
+      if (!country) {
+        const [createdCountry] = await Country.create(
+          [
+            {
+              name: countryName.trim(),
+              isActive: true,
+            },
+          ],
+          { session }
+        );
+        country = createdCountry;
+      }
+
+      if (!country.isActive) {
+        country.isActive = true;
+        await country.save({ session });
+      }
+
+      countryId = country._id;
+    }
+
+    // 3️⃣ STATE VALIDATION (NO countryId)
+    const activeState = await State.findOne({
+      _id: stateId,
+      isActive: true,
+    });
+
+    if (!activeState) {
+      if (session.inTransaction()) await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Selected state is not active.',
+      });
+    }
+
+    // 4️⃣ CITY VALIDATION (ONLY stateId)
+    const cityExists = await City.findOne({
+      _id: cityId,
+      stateId: stateId,
+    });
+
+    if (!cityExists) {
+      if (session.inTransaction()) await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid city selection for this state.',
+      });
+    }
+
+    // 5️⃣ Dynamic College Logic
+    let college = await College.findOne({
+      name: { $regex: new RegExp(`^${collegeName.trim()}$`, 'i') },
+      cityId,
+    }).session(session);
+
+    if (!college) {
+      const createdColleges = await College.create(
+        [
+          {
+            name: collegeName.trim(),
+            cityId,
+            stateId,
+            isActive: true,
+          },
+        ],
+        { session }
+      );
+      college = createdColleges[0];
+    }
+
+    // 6️⃣ Class Validation
+    if (finalClassId) {
+      const classExists = await ClassModel.findById(finalClassId);
+      if (!classExists) {
+        if (session.inTransaction()) await session.abortTransaction();
+        session.endSession();
+        return res
+          .status(400)
+          .json({ success: false, message: 'Invalid class selected.' });
+      }
+    }
+
+    // 7️⃣ Password & User Existence
+    if (password.length < 6) {
+      if (session.inTransaction()) await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters.',
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingUser = await UserModel.findOne({ email: normalizedEmail });
+    if (mobile) {
+      const mobileExists = await UserModel.findOne({ mobile });
+      if (mobileExists) {
+        if (session.inTransaction()) await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({
+          success: false,
+          message: 'User already exists with this mobile number.',
+        });
+      }
+    }
+
+    if (existingUser) {
+      if (session.inTransaction()) await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'User already exists with this email.',
+      });
+    }
+
+    const emailOtp = generateOtp();
+    const now = new Date();
+
+    // const mobileOtp = generateOtp();
+
+    const [user] = await UserModel.create(
+  [
+    {
+      name,
+      email: normalizedEmail,
+      password,
+      otp: emailOtp,
+      otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      lastOtpSentAt: now,
+      mobile,
+      isMobileVerified: true,
+      address,
+      countryId,
+      stateId,
+      cityId,
+      collegeId: college._id,
+      classId: finalClassId,
+      admissionYear,
+      signUpBy: 'email',
+      role: 'user',
+      trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      isTrialExpired: false,
+    },
+  ],
+  { session }
+);
+
+// 🔥 SUBSCRIPTION CREATE KARNA YAHA HAI
+
+const today = new Date();
+const tenDaysLater = new Date();
+tenDaysLater.setDate(today.getDate() + 10);
+
+await Subscription.create(
+  [
+    {
+      user: user._id,
+      plan: null,
+      paymentId: null,
+      orderId: null,
+      status: "active",
+      startDate: today,
+      endDate: tenDaysLater,
+    },
+  ],
+  { session }
+);
+
+    // 9️⃣ Commit and Cleanup
+    await session.commitTransaction();
+    session.endSession();
+    await sendFormEmail(normalizedEmail, emailOtp);
+
+    // 🔽 TEMP: CONSOLE MOBILE OTP
+    // console.log(`📱 Mobile OTP for ${mobile}: ${mobileOtp}`);
+
+    /*
+==============================
+ HERE PAID SMS SERVICE CODE AAYEGA
+ e.g. Twilio / MSG91 / Fast2SMS
+==============================
+await sendSms(mobile, `Your OTP is ${mobileOtp}`);
+*/
+
+    // 🔟 Populate for Response
+    const populatedUser = await UserModel.findById(user._id)
+      .populate('countryId', 'name')
+      .populate('stateId', 'name')
+      .populate('cityId', 'name')
+      .populate('collegeId', 'name')
+      .populate('classId', 'name');
+
+    return res.status(201).json({
+      success: true,
+      message: 'User registered successfully. Please verify your email.',
+      data: populatedUser,
+    });
+  } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    next(error);
+  }
+};
+
+export const verifyEmail = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // ✅ basic validation
+    if (!email || !otp) {
+      return res.status(400).json({
+        message: 'Email and OTP are required',
+      });
+    }
+
+    const user = await UserModel.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // ✅ already verified
+    if (user.isEmailVerified) {
+      return res.status(400).json({
+        message: 'Email is already verified',
+      });
+    }
+
+    // ✅ OTP + expiry check
+    if (
+      !user.otp ||
+      user.otp !== otp ||
+      !user.otpExpiresAt ||
+      user.otpExpiresAt.getTime() < Date.now()
+    ) {
+      return res.status(400).json({
+        message: 'Invalid or expired OTP',
+      });
+    }
+
+    // ✅ activate user
+    user.isEmailVerified = true;
+    user.otp = null;
+    user.otpExpiresAt = null;
+    await user.save();
+
+    // ✅ block/inactive check before issuing token
+    if (user.status !== 'active') {
+      return res.status(403).json({
+        message: 'Account is blocked or inactive',
+      });
+    }
+
+    // const { accessToken, refreshToken } = generateToken(user._id);
+
+    // ✅ safe user object
+    const safeUser = {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      status: user.status,
+    };
+
+    res.json({
+      message: 'Email verified successfully',
+      user: safeUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const verifyMobile = async (req, res, next) => {
+  try {
+    const { mobile, otp } = req.body;
+
+    if (!mobile || !otp) {
+      return res.status(400).json({ message: 'Mobile and OTP are required' });
+    }
+
+    const user = await UserModel.findOne({ mobile });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.isMobileVerified) {
+      return res.status(400).json({ message: 'Mobile already verified' });
+    }
+
+    if (
+      !user.mobileOtp ||
+      user.mobileOtp !== otp ||
+      !user.mobileOtpExpiresAt ||
+      user.mobileOtpExpiresAt.getTime() < Date.now()
+    ) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    user.isMobileVerified = true;
+    user.mobileOtp = null;
+    user.mobileOtpExpiresAt = null;
+    await user.save();
+
+    return res.json({ message: 'Mobile verified successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const login = async (req, res, next) => {
+  try {
+    let { email, mobile, password } = req.body;
+
+    email = email?.toLowerCase().trim();
+    mobile = mobile?.trim();
+
+    if (!password) {
+      return res.status(400).json({
+        message: 'Password is required',
+      });
+    }
+
+    if ((!email && !mobile) || (email && mobile)) {
+      return res.status(400).json({
+        message: 'Provide either email or mobile (not both)',
+      });
+    }
+
+    let user;
+
+    // =========================
+    // 🔐 EMAIL LOGIN
+    // =========================
+    if (email) {
+      user = await UserModel.findOne({ email })
+        .select('+password')
+        .populate('collegeId', 'name')
+        .populate('stateId', 'name')
+        .populate('cityId', 'name');
+
+      if (!user) {
+        return res.status(404).json({
+          message: 'User not found',
+        });
+      }
+
+      // // 🔥 AUTO VERIFY IF FALSE
+      // if (user.isEmailVerified !== true) {
+      //   user.isEmailVerified = true;
+      //   await user.save();
+      // }
+      if (!user.isEmailVerified) {
+        return res.status(403).json({
+          message: 'Please verify your email first',
+        });
+      }
+    }
+
+    // =========================
+    // 📱 MOBILE LOGIN
+    // =========================
+    if (mobile) {
+      user = await UserModel.findOne({ mobile })
+        .select('+password')
+        .populate('collegeId', 'name')
+        .populate('stateId', 'name')
+        .populate('cityId', 'name');
+
+      if (!user) {
+        return res.status(404).json({
+          message: 'User not found',
+        });
+      }
+    }
+
+    // =========================
+    // 🚫 STATUS CHECK
+    // =========================
+    if (user.status !== 'active') {
+      return res.status(403).json({
+        message: 'Account is blocked or inactive',
+      });
+    }
+
+    // =========================
+    // 🔑 PASSWORD CHECK
+    // =========================
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        message: 'Invalid credentials',
+      });
+    }
+ const today = new Date();
+
+    // =========================
+    // 🔄 EXPIRE OLD SUBSCRIPTIONS
+    // =========================
+    await Subscription.updateMany(
+      { user: user._id, endDate: { $lt: today }, status: { $ne: "expired" } },
+      { $set: { status: "expired" } }
+    );
+
+    // =========================
+    // 🔎 CHECK ACTIVE SUBSCRIPTION
+    // =========================
+    const activeSub = await Subscription.findOne({
+      user: user._id,
+      status: "active",
+      endDate: { $gte: today }
+    });
+
+    // Agar active subscription hai -> active, nahi -> expired
+    const hasActiveSubscription = !!activeSub;
+    const subscriptionStatus = hasActiveSubscription ? "active" : "expired";
+    // 🔐 Subscription / Trial Check
+    // if (!(await enforceSubscription(user._id, res))) return;
+    // =========================
+    // 🎟 TOKEN GENERATION
+    // =========================
+    const { accessToken, refreshToken } = generateToken(user._id);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    const safeUser = user.toObject();
+
+    delete safeUser.password;
+    delete safeUser.otp;
+    delete safeUser.otpExpiresAt;
+    delete safeUser.mobileOtp;
+    delete safeUser.mobileOtpExpiresAt;
+    delete safeUser.refreshToken;
+
+    return res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      user: safeUser,
+      accessToken,
+      refreshToken,
+      activesubscription:hasActiveSubscription
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resendOtp = async (req, res, next) => {
+  try {
+    let { email, mobile } = req.body;
+
+    email = email?.toLowerCase().trim();
+    mobile = mobile?.trim();
+
+    if ((!email && !mobile) || (email && mobile)) {
+      return res.status(400).json({
+        message: 'Provide either email or mobile',
+      });
+    }
+
+    let user;
+    let mode;
+
+    if (email) {
+      user = await UserModel.findOne({ email });
+      mode = 'email';
+    }
+
+    if (mobile) {
+      user = await UserModel.findOne({ mobile });
+      mode = 'mobile';
+    }
+
+    // Anti enumeration
+    if (!user) {
+      return res.status(200).json({
+        message: 'If this account exists, an OTP has been sent',
+      });
+    }
+
+    // Already verified check
+    if (mode === 'email' && user.isEmailVerified) {
+      return res.status(400).json({
+        message: 'Email already verified',
+      });
+    }
+
+    if (mode === 'mobile' && user.isMobileVerified) {
+      return res.status(400).json({
+        message: 'Mobile already verified',
+      });
+    }
+
+    // Cooldown check (1 min)
+    const now = Date.now();
+    if (user.lastOtpSentAt && now - user.lastOtpSentAt.getTime() < 60000) {
+      const remaining =
+        60 - Math.floor((now - user.lastOtpSentAt.getTime()) / 1000);
+
+      return res.status(429).json({
+        message: `Please wait ${remaining} seconds before requesting another OTP`,
+        retryAfterSeconds: remaining,
+      });
+    }
+
+    const otp = generateOtp();
+
+    user.otp = otp;
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    user.lastOtpSentAt = new Date();
+
+    await user.save();
+
+    if (mode === 'email') {
+      await sendFormEmail(user.email, otp);
+    }
+
+    return res.status(200).json({
+      message:
+        mode === 'email'
+          ? 'Email OTP resent successfully'
+          : 'Mobile OTP resent successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const forgetPassword = async (req, res, next) => {
+  try {
+    let { email } = req.body;
+    email = email?.toLowerCase().trim();
+
+    if (!email) {
+      return res.status(400).json({
+        message: 'Email is required',
+      });
+    }
+
+    const user = await UserModel.findOne({ email });
+
+    // Anti enumeration
+    if (!user) {
+      return res.status(200).json({
+        message: 'If this email exists, an OTP has been sent',
+      });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({
+        message: 'Account is blocked or inactive',
+      });
+    }
+
+    const now = Date.now();
+
+    if (user.lastOtpSentAt && now - user.lastOtpSentAt.getTime() < 60000) {
+      const remaining =
+        60 - Math.floor((now - user.lastOtpSentAt.getTime()) / 1000);
+
+      return res.status(429).json({
+        message: `Please wait ${remaining} seconds before requesting another OTP`,
+        retryAfterSeconds: remaining,
+      });
+    }
+
+    const otp = generateOtp();
+
+    user.otp = otp;
+    user.otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    user.lastOtpSentAt = new Date();
+
+    await user.save();
+    await sendFormEmail(user.email, otp);
+
+    return res.status(200).json({
+      message: 'If this email exists, an OTP has been sent',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const changePassword = async (req, res, next) => {
+  try {
+    let { email, otp, newPassword } = req.body;
+
+    email = email?.toLowerCase().trim();
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        message: 'Email, OTP and new password are required',
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: 'Password must be at least 6 characters',
+      });
+    }
+
+    const user = await UserModel.findOne({ email }).select('+password');
+
+    if (!user) {
+      return res.status(400).json({
+        message: 'Invalid OTP or request expired',
+      });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({
+        message: 'Account is blocked or inactive',
+      });
+    }
+
+    if (
+      !user.otp ||
+      user.otp !== otp ||
+      !user.otpExpiresAt ||
+      user.otpExpiresAt.getTime() < Date.now()
+    ) {
+      return res.status(400).json({
+        message: 'Invalid or expired OTP',
+      });
+    }
+
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({
+        message: 'New password must be different from old password',
+      });
+    }
+
+    user.password = newPassword;
+    user.otp = null;
+    user.otpExpiresAt = null;
+    user.lastOtpSentAt = null;
+
+    await user.save();
+
+    return res.status(200).json({
+      message: 'Password changed successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logout = async (req, res, next) => {
+  try {
+   const { userId } = req.body; 
+
+    // DB se token remove karo
+    const user = await UserModel.findByIdAndUpdate(
+      userId,
+      {
+        refreshToken: null, // ya token field jo tum use kar rahe ho
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Logout successful',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMe = async (req, res, next) => {
+  try {
+    // if (!(await enforceSubscription(req.user._id, res))) return;
+
+    // req.user protect middleware se aata hai
+    const user = await UserModel.findById(req.user._id)
+      .select('-password -otp -otpExpiresAt -refreshToken')
+      .populate('collegeId', 'name') // 🔥 College ka naam lene ke liye
+      .populate('stateId', 'name') // 🔥 State ka naam lene ke liye
+      .populate('cityId', 'name');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+const today = new Date();
+
+    // =========================
+    // 🔄 EXPIRE OLD SUBSCRIPTIONS
+    // =========================
+    await Subscription.updateMany(
+      { user: user._id, endDate: { $lt: today }, status: { $ne: "expired" } },
+      { $set: { status: "expired" } }
+    );
+
+    // =========================
+    // 🔎 CHECK ACTIVE SUBSCRIPTION
+    // =========================
+    const activeSub = await Subscription.findOne({
+      user: req.user._id,
+      status: "active",
+      endDate: { $gte: today }
+    });
+
+    // Agar active subscription hai -> active, nahi -> expired
+    const hasActiveSubscription = !!activeSub;
+    const subscriptionStatus = hasActiveSubscription ? "active" : "expired";
+    return res.status(200).json({
+      success: true,
+      message: 'User session valid',
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSlugByQuery = async (req, res, next) => {
+  try {
+    let { slug } = req.query;
+
+    // ✅ ADD: validation + normalization
+    if (!slug || typeof slug !== 'string') {
+      return res.status(400).json({
+        message: 'slug query parameter is required',
+      });
+    }
+
+    slug = slug.trim().toLowerCase();
+
+    const page = await PageModel.findOne({
+      slug,
+      $or: [{ isActive: true }, { isActive: { $exists: false } }],
+    }).select('slug title content');
+
+    if (!page) {
+      return res.status(404).json({
+        message: 'Page not found',
+      });
+    }
+
+    // ✅ ADD: cache for static pages
+    res.set('Cache-Control', 'public, max-age=300');
+
+    res.status(200).json({
+      success: true,
+      data: page,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getUserData = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // ✅ ADD: validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user id',
+      });
+    }
+
+    // ✅ ADD: authorization (user can access only own data)
+    if (req.user._id.toString() !== id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    const userData = await UserModel.findById(id)
+      .select('-password -otp -otpExpiresAt')
+      .populate('collegeId', 'name') // 🔥 College ka naam lene ke liye
+      .populate('stateId', 'name') // 🔥 State ka naam lene ke liye
+      .populate('cityId', 'name');
+
+    if (!userData) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: userData,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const editProfileOfUser = async (req, res, next) => {
+  try {
+    // ✅ WHITELIST allowed fields
+    const allowedFields = [
+      'name',
+      'mobile',
+      'address',
+      'countryId',
+      'stateId',
+      'cityId',
+
+      'classId',
+      'passingYear',
+      'admissionYear',
+    ];
+
+    const updateData = {};
+
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
+    // ✅ COLLEGE NAME UPDATE (NO REQUIRED CITY / STATE)
+    if (req.body.collegeName) {
+      const collegeName = req.body.collegeName.trim();
+
+      // user ka current data nikaalo
+      const currentUser = await UserModel.findById(req.user._id).select(
+        'cityId stateId'
+      );
+
+      const cityId = req.body.cityId || currentUser?.cityId || null;
+      const stateId = req.body.stateId || currentUser?.stateId || null;
+
+      let collegeQuery = {
+        name: { $regex: new RegExp(`^${collegeName}$`, 'i') },
+      };
+
+      if (cityId) {
+        collegeQuery.cityId = cityId;
+      }
+
+      let college = await College.findOne(collegeQuery);
+
+      // agar college nahi mila → create kar do
+      if (!college) {
+        college = await College.create({
+          name: collegeName,
+          cityId,
+          stateId,
+          isActive: true,
+        });
+      }
+
+      updateData.collegeId = college._id;
+    }
+
+    // ✅ Image upload
+    if (req.file) {
+      updateData.profileImage = `/uploads/user-profile/${req.file.filename}`;
+    }
+
+    // ✅ Empty update protection
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid fields provided for update',
+      });
+    }
+
+    // ✅ LOCATION VALIDATION (FIXED: no countryId check)
+    const { stateId, cityId } = updateData;
+
+    if (stateId && cityId) {
+      const validCity = await City.findOne({
+        _id: cityId,
+        stateId,
+      });
+
+      if (!validCity) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid state and city combination',
+        });
+      }
+    }
+
+    // ✅ CLASS VALIDATION
+    if (updateData.classId) {
+      const validClass = await ClassModel.findById(updateData.classId);
+      if (!validClass) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid class',
+        });
+      }
+    }
+
+    // ✅ UPDATE USER
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      req.user._id,
+      updateData,
+      {
+        new: true,
+        select: '-password -otp -otpExpiresAt',
+      }
+    ).populate('collegeId', 'name');
+
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// export const getSubjectsByUser = async (req, res) => {
+//   try {
+//     // 1. Agar aapko kisi specific course ke subjects chahiye (e.g. ?courseId=123)
+//     const { courseId } = req.query;
+
+//     let filter = { status: 'active' }; // Sirf active subjects dikhayenge
+//     if (courseId) {
+//       filter.courseId = courseId;
+//     }
+
+//     // 2. Database se subjects nikalna
+//     // .select() ka use karke hum sirf wahi data bhejenge jo user ko chahiye
+//     // .sort() se 'order' ke hisaab se list dikhegi
+//     const subjects = await Subject.find(filter)
+//       .select('name description order')
+//       .sort({ order: 1 });
+
+//     // 3. Response bhejna
+//     res.status(200).json({
+//       success: true,
+//       count: subjects.length,
+//       data: subjects,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: 'Subjects fetch nahi ho paye',
+//       error: error.message,
+//     });
+//   }
+// };
+
+// Pearl model import karein (agar count dikhana hai)
+// import Pearl from '../../models/admin/Pearl.js';
+
+export const getSubjectsByUser = async (req, res) => {
+  try {
+    const { courseId } = req.query;
+
+    let filter = { status: 'active' };
+    if (courseId) {
+      filter.courseId = courseId;
+    }
+
+    // 1. Database se data nikalna
+    // 'image' field ko add kiya hai kyunki app mein icon dikhana hoga
+    const subjects = await Subject.find(filter)
+      .select('name description image order')
+      .sort({ order: 1 });
+
+    // 2. Base URL set karein taaki Flutter ko poora path mile
+    const baseUrl = `${req.protocol}://${req.get('host')}/`;
+
+    // 3. Data ko transform karein (Image URL fix karne ke liye)
+    const formattedSubjects = subjects.map((subject) => {
+      return {
+        ...subject._doc,
+        image: subject.image ? `${baseUrl}${subject.image}` : null,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: formattedSubjects.length,
+      data: formattedSubjects,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Subjects fetch nahi ho paye',
+      error: error.message,
+    });
+  }
+};
+
+export const getAllsubjects = async (req, res) => {
+  try {
+    const { courseId } = req.query;
+
+    if (!courseId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'courseId is required' });
+    }
+
+    // REAL DATA: Database mein is course ke total kitne active subjects hain
+    const totalSubjects = await Subject.countDocuments({
+      courseId,
+      status: 'active',
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        _id: 'all',
+        name: 'All',
+        count: totalSubjects, // Yeh real number aayega database se
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// export const getSubSubjectsBySubject = async (req, res) => {
+//   try {
+//     const { subjectId } = req.query; // Frontend se subjectId aayegi
+
+//     if (!subjectId) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: 'subjectId is required' });
+//     }
+
+//     // Database se wahi sub-subjects nikalna jo is subjectId se linked hain
+//     const subSubjects = await SubSubject.find({
+//       subjectId: subjectId,
+//       status: 'active',
+//     })
+//       .select('name order')
+//       .sort({ order: 1 });
+
+//     res.status(200).json({
+//       success: true,
+//       count: subSubjects.length,
+//       data: subSubjects,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+export const getSubSubjectsBySubject = async (req, res) => {
+  try {
+    const { subjectId } = req.query;
+
+    if (!subjectId) {
+      return res.status(400).json({
+        success: false,
+        message: 'subjectId is required',
+      });
+    }
+
+    // 1️⃣ Sub-subjects fetch
+    const subSubjects = await SubSubject.find({
+      subjectId: subjectId,
+      status: 'active',
+    })
+      .select('name image order')
+      .sort({ order: 1 })
+      .lean();
+
+    const baseUrl = `${req.protocol}://${req.get('host')}/`;
+
+    // 2️⃣ Har Sub-Subject ke liye Topic + Video Count
+    const formattedData = await Promise.all(
+      subSubjects.map(async (item) => {
+        // Sub-subject ke saare topics
+        const topics = await Topic.find({
+          subSubjectId: item._id,
+          status: 'active',
+        }).select('_id');
+
+        const topicIds = topics.map((t) => t._id);
+
+        // In topics ke total videos
+        const totalVideos = await Video.countDocuments({
+          topicId: { $in: topicIds },
+          status: 'active',
+        });
+        const videoCount = totalVideos;
+        return {
+          _id: item._id,
+          name: item.name,
+          order: item.order,
+          image: item.image ? `${baseUrl}${item.image}` : null,
+          videoCount, // 👈 NEW FIELD
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: formattedData.length,
+      data: formattedData,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getChaptersWithTopicCountBySubSubject = async (req, res) => {
+  try {
+    const { subSubjectId } = req.params;
+    const userId = req.user?._id;
+    // if (userId && !(await enforceSubscription(userId, res))) return;
+
+    if (!mongoose.Types.ObjectId.isValid(subSubjectId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid subSubjectId',
+      });
+    }
+
+    const chapters = await Chapter.find({
+      subSubjectId,
+      status: 'active',
+    })
+      .select('_id name')
+      .lean();
+
+    if (!chapters.length) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: [],
+      });
+    }
+
+    const chapterIds = chapters.map((ch) => ch._id);
+
+    // Topic Count
+    const topicCounts = await Topic.aggregate([
+      {
+        $match: {
+          chapterId: { $in: chapterIds },
+          status: 'active',
+        },
+      },
+      {
+        $group: {
+          _id: '$chapterId',
+          totalTopicsCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const topicCountMap = {};
+    topicCounts.forEach((tc) => {
+      topicCountMap[tc._id.toString()] = tc.totalTopicsCount;
+    });
+
+    // 🔥 Clean Bookmark Query
+    const bookmarks = userId
+      ? await Bookmark.find({
+          userId,
+          type: 'chapter',
+          itemId: { $in: chapterIds },
+        }).lean()
+      : [];
+
+    const bookmarkMap = {};
+    bookmarks.forEach((bm) => {
+      bookmarkMap[bm.itemId.toString()] = bm.category;
+    });
+
+    const result = chapters.map((ch) => ({
+      chapterId: ch._id,
+      chapterName: ch.name,
+      totalTopicsCount: topicCountMap[ch._id.toString()] || 0,
+      isBookmarked: !!bookmarkMap[ch._id.toString()],
+      bookmarkCategory: bookmarkMap[ch._id.toString()] || null,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: result.length,
+      data: result,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const getTopicsByChapterForUser = async (req, res) => {
+  try {
+    const { chapterId } = req.params;
+    const userId = req.user?._id;
+    // if (userId && !(await enforceSubscription(userId, res))) return;
+
+    if (!mongoose.Types.ObjectId.isValid(chapterId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid chapterId',
+      });
+    }
+
+    // 🔥 Now selecting _id + codonId
+    const topics = await Topic.find({
+      chapterId,
+      status: 'active',
+    })
+      .select('_id codonId name description')
+      .sort({ order: 1 })
+      .lean();
+
+    if (!topics.length) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: [],
+      });
+    }
+
+    const topicIds = topics.map((t) => t._id);
+
+    // 🔥 Bookmark Query
+    const bookmarks = userId
+      ? await Bookmark.find({
+          userId,
+          type: 'topic',
+          itemId: { $in: topicIds },
+        }).lean()
+      : [];
+
+    const bookmarkMap = {};
+    bookmarks.forEach((bm) => {
+      bookmarkMap[bm.itemId.toString()] = bm.category;
+    });
+
+    const result = topics.map((topic) => ({
+      _id: topic._id,
+      codonId: topic.codonId,
+      name: topic.name,
+      description: topic.description,
+      isBookmarked: !!bookmarkMap[topic._id.toString()],
+      bookmarkCategory: bookmarkMap[topic._id.toString()] || null,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: result.length,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Get Topics Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const getTopicFullDetails = async (req, res) => {
+  try {
+    const { topicId } = req.params;
+    // if (!(await enforceSubscription(req.user._id, res))) return;
+
+    if (!mongoose.Types.ObjectId.isValid(topicId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid topicId',
+      });
+    }
+
+    // 1️⃣ Topic with full hierarchy populate
+    const topic = await Topic.findOne({
+      _id: topicId,
+      status: 'active',
+    })
+      .select('_id codonId name description chapterId')
+      .populate({
+        path: 'chapterId',
+        select: 'name subSubjectId',
+        populate: {
+          path: 'subSubjectId',
+          select: 'name subjectId',
+          populate: {
+            path: 'subjectId',
+            select: 'name',
+          },
+        },
+      })
+      .lean();
+
+    if (!topic) {
+      return res.status(404).json({
+        success: false,
+        message: 'Topic not found',
+      });
+    }
+
+    // 2️⃣ Total Videos
+    const totalVideos = await Video.countDocuments({
+      topicId,
+      status: 'active',
+    });
+
+    // 3️⃣ Topic belongs to single chapter
+    const totalChapters = topic.chapterId ? 1 : 0;
+
+    // 4️⃣ Total MCQs (chapter based)
+    const totalMcqs = await MCQ.countDocuments({
+      chapterId: topic.chapterId?._id,
+      status: 'active',
+    });
+
+    // 5️⃣ Notes Count
+    const totalNotes = await Video.countDocuments({
+      topicId,
+      status: 'active',
+      notesUrl: { $exists: true, $ne: null },
+    });
+
+    // 6️⃣ Rating
+    const ratingData = await Rating.aggregate([
+      {
+        $match: {
+          targetType: 'topic',
+          targetId: new mongoose.Types.ObjectId(topicId),
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          avgRating: { $avg: '$rating' },
+          totalReviews: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const avgRating = ratingData[0]?.avgRating || 0;
+    const totalReviews = ratingData[0]?.totalReviews || 0;
+
+    // ✅ CLEAN RESPONSE (codonId included)
+    res.status(200).json({
+      success: true,
+      data: {
+        topic: {
+          id: topic._id,
+          codonId: topic.codonId, // ✅ Added
+          name: topic.name,
+          description: topic.description,
+        },
+        hierarchy: {
+  subject: topic.chapterId?.subSubjectId?.subjectId
+    ? {
+        _id: topic.chapterId.subSubjectId.subjectId._id,
+        name: topic.chapterId.subSubjectId.subjectId.name,
+      }
+    : null,
+  subSubject: topic.chapterId?.subSubjectId
+    ? {
+        _id: topic.chapterId.subSubjectId._id,
+        name: topic.chapterId.subSubjectId.name,
+      }
+    : null,
+  chapter: topic.chapterId
+    ? {
+        _id: topic.chapterId._id,
+        name: topic.chapterId.name,
+      }
+    : null,
+},
+        stats: {
+          chapters: totalChapters,
+          videos: totalVideos,
+          mcqs: totalMcqs,
+          notes: totalNotes,
+          rating: Number(avgRating.toFixed(1)),
+          reviews: totalReviews,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Topic Full Details Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// export const getChaptersByTopicForUser = async (req, res) => {
+//   try {
+//     const { topicId } = req.params;
+
+//     if (!mongoose.Types.ObjectId.isValid(topicId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Invalid topicId',
+//       });
+//     }
+
+//     // 1️⃣ Fetch Chapters
+//     const chapters = await Chapter.find({
+//       topicId,
+//       status: 'active',
+//     })
+//       .select('_id name order image') // 👈 image add
+//       .sort({ order: 1 })
+//       .lean();
+
+//     const chapterIds = chapters.map((c) => c._id);
+
+//     // 2️⃣ MCQ Count per Chapter
+//     const mcqCounts = await MCQ.aggregate([
+//       {
+//         $match: {
+//           chapterId: { $in: chapterIds },
+//           status: 'active',
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: '$chapterId',
+//           totalMcq: { $sum: 1 },
+//         },
+//       },
+//     ]);
+
+//     // 3️⃣ Rating per Chapter (from MCQs avg rating OR Video ratings if needed)
+//     const ratings = await Rating.aggregate([
+//       {
+//         $lookup: {
+//           from: 'videos',
+//           localField: 'videoId',
+//           foreignField: '_id',
+//           as: 'video',
+//         },
+//       },
+//       { $unwind: '$video' },
+//       {
+//         $match: {
+//           'video.chapterId': { $in: chapterIds },
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: '$video.chapterId',
+//           avgRating: { $avg: '$rating' },
+//         },
+//       },
+//     ]);
+
+//     const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+//     // 4️⃣ Merge Everything
+//     const formattedChapters = chapters.map((chapter) => {
+//       const mcqData = mcqCounts.find(
+//         (m) => m._id.toString() === chapter._id.toString()
+//       );
+
+//       const ratingData = ratings.find(
+//         (r) => r._id.toString() === chapter._id.toString()
+//       );
+
+//       return {
+//         chapterId: chapter._id,
+//         chapterName: chapter.name,
+//         chapterImage: chapter.image ? `${baseUrl}${chapter.image}` : null,
+//         totalMcq: mcqData ? mcqData.totalMcq : 0,
+//         rating: ratingData ? Number(ratingData.avgRating.toFixed(1)) : 0,
+//         order: chapter.order,
+//       };
+//     });
+
+//     res.status(200).json({
+//       success: true,
+//       count: formattedChapters.length,
+//       data: formattedChapters,
+//     });
+//   } catch (error) {
+//     console.error('Get Chapters By Topic Error:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+export const getChaptersByTopicForUser = async (req, res) => {
+  try {
+    const { topicId } = req.params;
+    const userId = req.user._id;
+    // if (!(await enforceSubscription(userId, res))) return;
+
+    if (!mongoose.Types.ObjectId.isValid(topicId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid topicId',
+      });
+    }
+
+    // 1️⃣ Chapters
+    const chapters = await Chapter.find({
+      topicId,
+      status: 'active',
+    })
+      .select('_id name order image')
+      .sort({ order: 1 })
+      .lean();
+
+    const chapterIds = chapters.map((c) => c._id);
+
+    // 2️⃣ MCQ count
+    const mcqCounts = await MCQ.aggregate([
+      {
+        $match: {
+          chapterId: { $in: chapterIds },
+          status: 'active',
+        },
+      },
+      {
+        $group: {
+          _id: '$chapterId',
+          totalMcq: { $sum: 1 },
+        },
+      },
+    ]);
+
+    // 3️⃣ User Attempts (IMPORTANT PART)
+    const attempts = await TestAttempt.find({
+      userId,
+      chapterId: { $in: chapterIds },
+    })
+      .select('chapterId answers submittedAt')
+      .lean();
+
+    // 4️⃣ Rating
+    const ratings = await Rating.aggregate([
+      {
+        $lookup: {
+          from: 'videos',
+          localField: 'videoId',
+          foreignField: '_id',
+          as: 'video',
+        },
+      },
+      { $unwind: '$video' },
+      {
+        $match: {
+          'video.chapterId': { $in: chapterIds },
+        },
+      },
+      {
+        $group: {
+          _id: '$video.chapterId',
+          avgRating: { $avg: '$rating' },
+        },
+      },
+    ]);
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    // 5️⃣ Final merge
+    const formattedChapters = chapters.map((chapter) => {
+      const mcqData = mcqCounts.find(
+        (m) => m._id.toString() === chapter._id.toString()
+      );
+
+      const ratingData = ratings.find(
+        (r) => r._id.toString() === chapter._id.toString()
+      );
+
+      const attempt = attempts.find(
+        (a) => a.chapterId?.toString() === chapter._id.toString()
+      );
+
+      let status = 'NOT_STARTED';
+      let attemptedMcq = 0;
+
+      if (attempt) {
+        attemptedMcq = attempt.answers?.length || 0;
+        status = attempt.submittedAt ? 'COMPLETED' : 'IN_PROGRESS';
+      }
+      console.log('Image URL Build:', `${baseUrl}${chapter.image}`);
+      return {
+        chapterId: chapter._id,
+        chapterName: chapter.name,
+        chapterImage: chapter.image ? `${baseUrl}${chapter.image}` : null,
+        totalMcq: mcqData ? mcqData.totalMcq : 0,
+        attemptedMcq,
+        status,
+        rating: ratingData ? Number(ratingData.avgRating.toFixed(1)) : 0,
+        order: chapter.order,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: formattedChapters.length,
+      data: formattedChapters,
+    });
+  } catch (error) {
+    console.error('Get Chapters By Topic Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+//working one
+// export const getMcqsByChapter = async (req, res) => {
+//   try {
+//     const { chapterId } = req.query;
+
+//     if (!chapterId) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: 'chapterId is required' });
+//     }
+
+//     const mcqs = await MCQ.find({ chapterId, status: 'active' })
+//       .select('-createdBy -updatedBy') // Admin details ki zaroorat nahi hai
+//       .sort({ createdAt: 1 });
+
+//     res.status(200).json({
+//       success: true,
+//       count: mcqs.length,
+//       data: mcqs,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+// Ye function aap ek helper file mein ya usi controller mein upar rakh sakte hain
+
+// export const getMcqsByChapter = async (req, res) => {
+//   try {
+//     const { chapterId } = req.query;
+//     const userId = req.user._id;
+
+//     if (!chapterId) {
+//       return res.status(400).json({ success: false, message: 'chapterId is required' });
+//     }
+
+//     // 1. MCQs fetch karein
+//     const mcqs = await MCQ.find({ chapterId, status: 'active' })
+//       .select('-createdBy -updatedBy')
+//       .sort({ createdAt: 1 });
+
+//     // 2. User Progress Update (Single Atomic Operation)
+//     const userBeforeUpdate = await UserModel.findById(userId);
+
+//     // Check karein ki kya ye chapter pehle se list mein hai?
+//     const isNewChapter = !userBeforeUpdate.completedChapters.includes(chapterId);
+
+//     let currentModulesCount = userBeforeUpdate.completedModulesCount || 0;
+
+//     if (isNewChapter) {
+//       // Agar naya chapter hai, toh array mein add karo aur count badhao
+//       const updatedUser = await UserModel.findByIdAndUpdate(
+//         userId,
+//         {
+//           $addToSet: { completedChapters: chapterId },
+//           $inc: { completedModulesCount: 1 }
+//         },
+//         { new: true }
+//       );
+//       currentModulesCount = updatedUser.completedModulesCount;
+//     }
+
+//     // 3. Final Response
+//     res.status(200).json({
+//       success: true,
+//       mcqCount: mcqs.length,
+//       completedModulesCount: currentModulesCount,
+//       data: mcqs,
+//     });
+
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+// B. Test Submit karke Result Calculate karna
+export const getMcqsByChapter = async (req, res) => {
+  try {
+    const { chapterId } = req.query;
+    const userId = req.user._id;
+    // if (!(await enforceSubscription(userId, res))) return;
+
+    if (!chapterId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'chapterId is required' });
+    }
+
+    // 1. MCQs fetch karein
+    const mcqs = await MCQ.find({ chapterId, status: 'active' })
+      .select('-createdBy -updatedBy')
+      .sort({ createdAt: 1 });
+
+    // 2. Helper function se progress update karein
+    const currentCount = await updateUserChapterProgress(userId, chapterId);
+
+    // 3. Response
+    res.status(200).json({
+      success: true,
+      mcqCount: mcqs.length,
+      completedModulesCount: currentCount,
+      data: mcqs,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const submitTest = async (req, res) => {
+  try {
+    const { chapterId, answers } = req.body;
+    // answers format: [{ mcqId: "id", selectedIndex: 0 }, ...]
+    // if (!(await enforceSubscription(req.user._id, res))) return;
+
+    if (!chapterId || !answers) {
+      return res.status(400).json({ success: false, message: 'Data missing' });
+    }
+
+    // Database se us chapter ke saare sahi answers nikalna
+    const dbMcqs = await MCQ.find({ chapterId, status: 'active' });
+
+    let correct = 0;
+    let incorrect = 0;
+    let notAttempted = 0;
+    const total = dbMcqs.length;
+
+    dbMcqs.forEach((mcq) => {
+      // User ne is question ka kya answer diya?
+      const userAns = answers.find((a) => a.mcqId === mcq._id.toString());
+
+      if (
+        !userAns ||
+        userAns.selectedIndex === null ||
+        userAns.selectedIndex === undefined
+      ) {
+        notAttempted++;
+      } else if (userAns.selectedIndex === mcq.correctAnswer) {
+        correct++;
+      } else {
+        incorrect++;
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      result: {
+        totalQuestions: total,
+        solved: answers.length,
+        correct: correct,
+        incorrect: incorrect,
+        notAttempted: notAttempted,
+        scorePercentage: ((correct / total) * 100).toFixed(2),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 1. Saare Active Plans Dekhna
+// export const getActivePlans = async (req, res, next) => {
+//   try {
+//     const plans = await SubscriptionPlan.find({ isActive: true });
+//     res.status(200).json({ success: true, data: plans });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+// 1. Get All Active Plans (For Plan Selection Screen)
+export const getActivePlans = async (req, res, next) => {
+  try {
+    // Pricing ke hisab se sort kar diya taaki sasta plan pehle dikhe
+    const plans = await SubscriptionPlan.find({ isActive: true }).sort({
+      'pricing.0.price': 1,
+    });
+
+    res.status(200).json({
+      success: true,
+      count: plans.length,
+      data: plans,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 2. Get User's Current Plan (For Profile or Checking Access)
+export const getMySubscription = async (req, res) => {
+  try {
+    const user_id = req.user._id; // Auth middleware se aayega
+
+    const user = await UserModel.findById(user_id)
+      .select('subscription subscriptionStatus')
+      .populate('subscription.plan_id', 'name features');
+
+    if (!user) {
+      return res.status(404).json({ status: false, message: 'User not found' });
+    }
+
+    // Check if subscription exists and is NOT expired
+    const today = new Date();
+    const hasActivePlan =
+      user.subscription &&
+      user.subscription.isActive &&
+      user.subscription.endDate > today;
+
+    if (!hasActivePlan) {
+      return res.status(200).json({
+        status: true,
+        isSubscribed: false,
+        message: 'No active subscription found or plan expired',
+        data: null,
+      });
+    }
+
+    res.status(200).json({
+      status: true,
+      isSubscribed: true,
+      data: user,
+    });
+  } catch (error) {
+    res.status(500).json({ status: false, message: error.message });
+  }
+};
+
+// 2. Buy Subscription (Final Step after Payment)
+export const buySubscription = async (req, res, next) => {
+  try {
+    const { planId, months, paymentId, orderId } = req.body;
+    const userId = req.user._id;
+
+    // Plan check karein
+    const plan = await SubscriptionPlan.findById(planId);
+    if (!plan) return res.status(404).json({ message: 'Plan not found' });
+
+    // Price confirm karein
+    const selectedPricing = plan.pricing.find(
+      (p) => p.months === Number(months)
+    );
+    if (!selectedPricing)
+      return res.status(400).json({ message: 'Invalid duration' });
+
+    // Expiry Date calculate karein
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + Number(months));
+
+    // Status decide karein plan ke name ke hisaab se
+    let status = 'starter';
+    if (plan.name.toLowerCase().includes('pro')) status = 'professional';
+    if (plan.name.toLowerCase().includes('premium')) status = 'premium_plus';
+
+    // USER UPDATE (Aapka model update ho raha hai)
+    await UserModel.findByIdAndUpdate(userId, {
+      subscription: {
+        plan_id: planId,
+        startDate,
+        endDate,
+        isActive: true,
+        selectedMonths: months,
+      },
+      subscriptionStatus: status,
+      isTrialExpired: true,
+    });
+
+    // Transaction save karein
+    await TransactionModel.create({
+      userId,
+      planId,
+      razorpay_payment_id: paymentId,
+      razorpay_order_id: orderId,
+      amount: selectedPricing.price,
+      months: Number(months),
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Subscription activated successfully!',
+      expiryDate: endDate,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+// export const getMySubscription = async (req, res) => {
+//   try {
+//     const user_id = req.user._id;
+//     const user = await UserModel.findById(user_id)
+//       .select('subscription subscriptionStatus')
+//       .populate('subscription.plan_id', 'name features');
+
+//     if (!user.subscription || !user.subscription.isActive) {
+//       return res.status(200).json({
+//         status: true,
+//         message: 'No active subscription found',
+//         data: null,
+//       });
+//     }
+
+//     res.status(200).json({ status: true, data: user });
+//   } catch (error) {
+//     res.status(500).json({ status: false, message: error.message });
+//   }
+// };
+
+export const postRating = async (req, res) => {
+  try {
+    const { rating, review, targetType, targetId } = req.body;
+    const userId = req.user._id;
+    // if (!(await enforceSubscription(userId, res))) return;
+
+    // 1️⃣ Required fields check
+    if (rating === undefined || !targetType || !targetId) {
+      return res.status(400).json({
+        success: false,
+        message: 'rating, targetType and targetId are required',
+      });
+    }
+
+    // 2️⃣ Rating validation
+    const numericRating = Number(rating);
+    if (Number.isNaN(numericRating) || numericRating < 1 || numericRating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rating must be a number between 1 and 5',
+      });
+    }
+
+    // 3️⃣ targetType validation (MATCH SCHEMA)
+    const allowedTypes = [
+      'course',
+      'subject',
+      'sub-subject',
+      'topic',
+      'chapter',
+      'video',
+      'test',
+      'mcq',
+      'q-test',
+      'custom-test',
+    ];
+
+    if (!allowedTypes.includes(targetType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid targetType',
+      });
+    }
+
+    // 4️⃣ ObjectId validation
+    if (!mongoose.Types.ObjectId.isValid(targetId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid targetId',
+      });
+    }
+
+    // 5️⃣ Upsert rating
+    const savedRating = await Rating.findOneAndUpdate(
+      {
+        userId: new mongoose.Types.ObjectId(userId),
+        targetType,
+        targetId: new mongoose.Types.ObjectId(targetId),
+      },
+
+      {
+        rating: numericRating,
+        review,
+      },
+      {
+        upsert: true,
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Rating saved successfully',
+      data: savedRating,
+    });
+  } catch (error) {
+    console.error('======== RATING ERROR START ========');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error code:', error.code);
+    console.error('Full error object:', error);
+    console.error('======== RATING ERROR END ========');
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+// export const postRating = async (req, res) => {
+//   try {
+//     const { rating, review, videoId } = req.body; // videoId add kiya
+//     const userId = req.user._id;
+
+//     if (!rating || !videoId) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: 'Rating and VideoId are required' });
+//     }
+
+//     // Update if already exists, else create new (Optional logic)
+//     const newRating = await Rating.findOneAndUpdate(
+//       { userId, videoId },
+//       { rating, review },
+//       { upsert: true, new: true }
+//     );
+
+//     res.status(201).json({
+//       success: true,
+//       message: 'Thank you for your rating!',
+//       data: newRating,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+export const getAllSubSubjectsForUser = async (req, res) => {
+  try {
+    const { courseId } = req.query; // Course ke base par filter zaroori hai
+    // if (!(await enforceSubscription(req.user._id, res))) return;
+
+    if (!courseId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'courseId is required' });
+    }
+
+    // Pure course ke saare active sub-subjects fetch karna
+    const subSubjects = await SubSubject.find({
+      courseId: courseId,
+      status: 'active',
+    }).sort({ order: 1 });
+
+    res.status(200).json({
+      success: true,
+      data: subSubjects,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+/**
+ * @desc    Get only Course Names and IDs for selection
+ * @route   GET /api/user/courses/list
+ * @access  Public
+ */
+export const getCourseListSimple = async (req, res, next) => {
+  try {
+    // Sirf active aur published courses ka 'name' uthayenge
+    const courses = await Course.find(
+      { status: 'active', isPublished: true },
+      'name'
+    ).sort({ name: 1 }); // Alphabetical order mein sort kiya hai
+
+    res.status(200).json({
+      success: true,
+      message: 'Course list fetched successfully',
+      data: courses,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTopicVideosForUser = async (req, res) => {
+  try {
+    const { topicId } = req.params;
+    const { filterType } = req.query;
+    const userId = req.user._id;
+    // if (!(await enforceSubscription(userId, res))) return;
+
+    const topic = await Topic.findById(topicId).select('name').lean();
+    const chapters = await Chapter.find({ topicId, status: 'active' })
+      .sort({ order: 1 })
+      .lean();
+
+    // Aggregation: Videos + Progress + Ratings
+    let videos = await Video.aggregate([
+      // 1. Topic ke videos filter karein
+      {
+        $match: {
+          topicId: new mongoose.Types.ObjectId(topicId),
+          status: 'active',
+        },
+      },
+
+      // 2. Progress Lookup
+      {
+        $lookup: {
+          from: 'videoprogresses',
+          let: { vId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$videoId', '$$vId'] },
+                    { $eq: ['$userId', userId] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: 'progressInfo',
+        },
+      },
+
+      // 3. Ratings Lookup (Iske bina totalReviews error dega)
+      {
+        $lookup: {
+          from: 'ratings',
+          localField: '_id',
+          foreignField: 'videoId',
+          as: 'allRatings',
+        },
+      },
+
+      // 4. Fields Calculation (Null values ko 0 mein badalna)
+      {
+        $addFields: {
+          statusTag: {
+            $ifNull: [
+              { $arrayElemAt: ['$progressInfo.status', 0] },
+              'unattended',
+            ],
+          },
+          watchPercentage: {
+            $ifNull: [{ $arrayElemAt: ['$progressInfo.percentage', 0] }, 0],
+          },
+          lastWatchTime: {
+            $ifNull: [{ $arrayElemAt: ['$progressInfo.watchTime', 0] }, 0],
+          },
+          avgRating: { $ifNull: [{ $avg: '$allRatings.rating' }, 0] }, // Null to 0
+          totalReviews: { $size: { $ifNull: ['$allRatings', []] } }, // Missing array to 0
+        },
+      },
+      { $project: { progressInfo: 0, allRatings: 0 } },
+    ]);
+
+    // DEBUG: Terminal mein check karein ki kitne videos mile
+    console.log('Total Videos Found before filter:', videos.length);
+
+    // 5. Filtering Logic
+    if (filterType && filterType !== 'all') {
+      const typeMap = {
+        completed: 'completed',
+        paused: 'watching',
+        unattended: 'unattended',
+      };
+      const targetStatus = typeMap[filterType];
+      if (targetStatus) {
+        videos = videos.filter((v) => v.statusTag === targetStatus);
+      }
+    }
+
+    // 6. Grouping into Chapters (Match check)
+    // const groupedData = chapters.map(chapter => {
+    //   const chapterVideos = videos.filter(v =>
+    //     v.chapterId && v.chapterId.toString() === chapter._id.toString()
+    //   );
+    const groupedData = chapters.map((chapter) => {
+      // Debug: Check karein IDs match ho rahi hain ya nahi
+      const chapterVideos = videos.filter((v) => {
+        if (!v.chapterId) return false;
+        return v.chapterId.toString() === chapter._id.toString();
+      });
+
+      return {
+        chapterId: chapter._id,
+        chapterName: chapter.name,
+        videos: chapterVideos,
+      };
+    });
+
+    // return {
+    //   chapterId: chapter._id,
+    //   chapterName: chapter.name,
+    //   videos: chapterVideos
+    // };
+    // }).filter(group => group.videos.length > 0); // Sirf wahi chapters dikhao jinme videos hain
+    const finalData = groupedData.filter((group) => group.videos.length > 0);
+    res.status(200).json({
+      success: true,
+      topicName: topic?.name,
+      // totalVideosCount: videos.length,
+      data: finalData,
+    });
+  } catch (error) {
+    console.error('Aggregation Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const updateVideoProgress = async (req, res) => {
+  try {
+    const { videoId, topicId, watchTime, totalDuration } = req.body;
+    const userId = req.user._id; // Auth middleware se mil raha hai
+    // if (!(await enforceSubscription(userId, res))) return;
+
+    // Percentage calculate karein
+    const percentage = (watchTime / totalDuration) * 100;
+
+    let status = 'watching';
+    if (percentage >= 90) status = 'completed'; // 90% dekha matlab complete
+
+    const progress = await VideoProgress.findOneAndUpdate(
+      { userId, videoId },
+      {
+        topicId,
+        watchTime,
+        totalDuration,
+        percentage: Math.round(percentage),
+        status,
+      },
+      { upsert: true, new: true } // Agar record nahi hai toh naya bana dega
+    );
+
+    // 🔥 Helper Call: Jab video complete ho tabhi update karein
+    if (status === 'completed') {
+      const videoData = await Video.findById(videoId).select('chapterId');
+      if (videoData?.chapterId) {
+        await updateUserChapterProgress(userId, videoData.chapterId);
+      }
+    }
+
+    res.status(200).json({ success: true, data: progress });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getCustomPracticeMCQs = async (req, res, next) => {
+  try {
+    const {
+      subjectIds = ['all'],
+      tagIds = ['all'],
+      difficulty = 'all',
+      mode = 'regular',
+      discard = false,
+    } = req.body;
+ 
+    const userId = req.user._id;
+ 
+    const testMode = mode?.toLowerCase() === 'exam' ? 'exam' : 'regular';
+ 
+    // ====================================================
+    // 🔥 EXISTING ATTEMPT CHECK
+    // ====================================================
+ 
+    let existingAttempt = await CustomTestAttempt.findOne({ userId }).populate(
+      'mcqIds'
+    );
+ 
+    if (existingAttempt) {
+      const filtersChanged = existingAttempt.mode !== testMode;
+ 
+      if (discard || filtersChanged) {
+        await CustomTestAttempt.deleteOne({ _id: existingAttempt._id });
+        existingAttempt = null;
+      }
+    }
+ 
+    if (existingAttempt && existingAttempt.status === 'in_progress') {
+      return res.status(200).json({
+        success: true,
+        message: 'Resuming existing test',
+        attemptId: existingAttempt._id,
+        isResume: true,
+        requestedMode: existingAttempt.mode,
+        isTimerRequired: existingAttempt.mode === 'exam',
+        timerMinutes: existingAttempt.mode === 'exam' ? 20 : 0,
+        count: existingAttempt.mcqIds.length,
+        totalAvailableMCQ: existingAttempt.mcqIds.length,
+        data: existingAttempt.mcqIds,
+      });
+    }
+ 
+    // ====================================================
+    // 🔥 SUBJECT → CHAPTER RESOLUTION
+    // ====================================================
+ 
+    let chapterIds = [];
+ 
+    if (subjectIds.includes('all')) {
+      const chapters = await Chapter.find({ status: 'active' }).select('_id');
+      chapterIds = chapters.map((c) => c._id);
+    } else {
+      const validSubjectIds = subjectIds.map(
+        (id) => new mongoose.Types.ObjectId(id)
+      );
+ 
+      const subSubjects = await SubSubject.find({
+        subjectId: { $in: validSubjectIds },
+        status: 'active',
+      }).select('_id');
+ 
+      const subSubjectIds = subSubjects.map((s) => s._id);
+ 
+      const chapters = await Chapter.find({
+        subSubjectId: { $in: subSubjectIds },
+        status: 'active',
+      }).select('_id');
+ 
+      chapterIds = chapters.map((c) => c._id);
+    }
+ 
+    if (!chapterIds.length) {
+      return res.status(404).json({
+        success: false,
+        message: 'No chapters found for selected subjects',
+      });
+    }
+ 
+    // ====================================================
+    // 🔥 BUILD MCQ FILTER
+    // ====================================================
+ 
+    const filter = {
+      status: 'active',
+      chapterId: { $in: chapterIds },
+      testMode: testMode,
+    };
+ 
+    if (difficulty !== 'all') {
+      filter.difficulty = difficulty.toLowerCase();
+    }
+ 
+    if (!tagIds.includes('all')) {
+      const validTagIds = tagIds.map((id) => new mongoose.Types.ObjectId(id));
+      filter.tagId = { $in: validTagIds };
+    }
+ 
+    // ====================================================
+    // 🏆 CHECK IF SUBJECT HAS MCQs
+    // ====================================================
+ 
+    const totalAvailableMCQ = await MCQ.countDocuments(filter);
+ 
+    if (!totalAvailableMCQ) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'No MCQs available for selected subject/tags/difficulty/mode. Please change filters.',
+      });
+    }
+ 
+    // ====================================================
+    // 🔥 FETCH RANDOM MCQs
+    // ====================================================
+ 
+    const sampleSize = Math.min(20, totalAvailableMCQ);
+ 
+    const mcqs = await MCQ.aggregate([
+      { $match: filter },
+      { $sample: { size: sampleSize } },
+ 
+      {
+        $lookup: {
+          from: 'tags',
+          localField: 'tagId',
+          foreignField: '_id',
+          as: 'tagDetails',
+        },
+      },
+ 
+      {
+        $project: {
+          question: 1,
+          options: 1,
+          correctAnswer: 1,
+          explanation: 1,
+          difficulty: 1,
+          marks: 1,
+          negativeMarks: 1,
+          testMode: 1,
+          tag: { $arrayElemAt: ['$tagDetails', 0] },
+        },
+      },
+    ]);
+ 
+    // ====================================================
+    // 🔥 CREATE ATTEMPT
+    // ====================================================
+ 
+    const attempt = await CustomTestAttempt.create({
+      userId,
+      mcqIds: mcqs.map((m) => m._id),
+      mode: testMode,
+      status: 'in_progress',
+      startedAt: new Date(),
+    });
+ 
+    const isExamMode = testMode === 'exam';
+ 
+    return res.status(200).json({
+      success: true,
+      attemptId: attempt._id,
+      isResume: false,
+      count: mcqs.length,
+      totalAvailableMCQ,
+      requestedMode: testMode,
+      isTimerRequired: isExamMode,
+      timerMinutes: isExamMode ? 20 : 0,
+      data: mcqs,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resumeCustomTest = async (req, res) => {
+  try {
+    const { attemptId } = req.params;
+    const userId = req.user._id;
+
+    const attempt = await CustomTestAttempt.findOne({
+      _id: attemptId,
+      userId,
+    }).populate('mcqIds');
+
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test not found',
+      });
+    }
+
+    if (attempt.status !== 'in_progress') {
+      return res.status(400).json({
+        success: false,
+        message: 'Test already completed',
+      });
+    }
+
+    // ⏳ Timer validation (Exam Mode)
+    if (attempt.mode === 'exam') {
+      const elapsedMinutes =
+        (Date.now() - new Date(attempt.startedAt)) / (1000 * 60);
+
+      if (elapsedMinutes >= 20) {
+        attempt.status = 'auto_submitted';
+        attempt.submittedAt = new Date();
+        await attempt.save();
+
+        return res.status(400).json({
+          success: false,
+          message: 'Time expired. Test auto submitted.',
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: attempt,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const saveCustomAnswer = async (req, res) => {
+  try {
+    const { attemptId, mcqId, selectedIndex } = req.body;
+    const userId = req.user._id;
+
+    const attempt = await CustomTestAttempt.findOne({
+      _id: attemptId,
+      userId,
+      status: 'in_progress',
+    });
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Attempt not found',
+      });
+    }
+    // ⏳ Exam Mode Timer Validation
+    if (attempt.mode === 'exam') {
+      const elapsedMinutes =
+        (Date.now() - new Date(attempt.startedAt)) / (1000 * 60);
+
+      if (elapsedMinutes >= 20) {
+        attempt.status = 'auto_submitted';
+        attempt.submittedAt = new Date();
+        await attempt.save();
+
+        return res.status(400).json({
+          success: false,
+          message: 'Time expired. Test auto submitted.',
+        });
+      }
+    }
+
+    const existingAnswer = attempt.answers.find(
+      (a) => a.mcqId.toString() === mcqId
+    );
+
+    if (existingAnswer) {
+      existingAnswer.selectedIndex = selectedIndex;
+    } else {
+      attempt.answers.push({ mcqId, selectedIndex });
+    }
+
+    await attempt.save();
+
+    res.json({
+      success: true,
+      message: 'Answer saved',
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const submitCustomTest = async (req, res) => {
+  try {
+    const { attemptId } = req.body;
+    const userId = req.user._id;
+
+    const attempt = await CustomTestAttempt.findOne({
+      _id: attemptId,
+      userId,
+    });
+
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Attempt not found',
+      });
+    }
+
+    if (attempt.status !== 'in_progress') {
+      return res.status(400).json({
+        success: false,
+        message: 'Already submitted',
+      });
+    }
+
+    // ⏳ Exam timer validation
+    if (attempt.mode === 'exam') {
+      const elapsedMinutes =
+        (Date.now() - new Date(attempt.startedAt)) / (1000 * 60);
+
+      if (elapsedMinutes >= 20) {
+        attempt.status = 'auto_submitted';
+      } else {
+        attempt.status = 'completed';
+      }
+    } else {
+      attempt.status = 'completed';
+    }
+
+    const dbMcqs = await MCQ.find({
+      _id: { $in: attempt.mcqIds },
+    });
+
+    let correct = 0;
+    let incorrect = 0;
+    let notAttempted = 0;
+
+    dbMcqs.forEach((mcq) => {
+      const userAns = attempt.answers.find(
+        (a) => a.mcqId.toString() === mcq._id.toString()
+      );
+
+      if (!userAns) {
+        notAttempted++;
+      } else if (userAns.selectedIndex === mcq.correctAnswer) {
+        correct++;
+      } else {
+        incorrect++;
+      }
+    });
+
+    const total = dbMcqs.length;
+    const scorePercentage = (correct / total) * 100;
+
+    await CustomTestAttempt.updateOne(
+      { _id: attemptId, userId },
+      {
+        $set: {
+          status: attempt.status,
+          result: {
+            totalQuestions: total,
+            correct,
+            incorrect,
+            notAttempted,
+            scorePercentage,
+          },
+          submittedAt: new Date(),
+        },
+      }
+    );
+
+    res.json({
+      success: true,
+      result: {
+        totalQuestions: total,
+        correct,
+        incorrect,
+        notAttempted,
+        scorePercentage,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+export const restartCustomTest = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const attempt = await CustomTestAttempt.findOne({ userId });
+
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        message: 'No custom test found',
+      });
+    }
+
+    // 🔥 Reset only (never create new here)
+    attempt.answers = [];
+    attempt.result = null;
+    attempt.status = 'in_progress';
+    attempt.startedAt = new Date();
+    attempt.submittedAt = null;
+
+    await attempt.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Test restarted successfully',
+      attemptId: attempt._id,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const getCustomTestHistory = async (req, res) => {
+  try {
+    const attempt = await CustomTestAttempt.findOne({
+      userId: req.user._id,
+    });
+
+    res.json({
+      success: true,
+      count: attempt ? 1 : 0,
+      data: attempt ? [attempt] : [],
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getDailyMCQ = async (req, res, next) => {
+  try {
+    const today = new Date();
+    const dateString = today.toISOString().split('T')[0]; // Format: 2024-05-20
+
+    // Date ko seed number mein badalna taaki poore din ek hi question dikhe
+    const seed = dateString
+      .split('-')
+      .reduce((acc, val) => acc + parseInt(val), 0);
+
+    const count = await MCQ.countDocuments({ status: 'active' });
+
+    if (count === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'No active MCQs found' });
+    }
+
+    const dailyIndex = seed % count;
+
+    const dailyQuestion = await MCQ.findOne({ status: 'active' })
+      .skip(dailyIndex)
+      .populate('courseId subjectId subSubjectId chapterId tagId', 'name');
+
+    res.status(200).json({
+      success: true,
+      message: 'Daily MCQ fetched successfully',
+      date: dateString,
+      data: dailyQuestion,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+export const getAllTagsForUsers = async (req, res, next) => {
+  try {
+    // Users ke liye hum aksar A-Z sort karte hain taaki list readable ho
+    const tags = await Tag.find().select('name _id').sort({ name: 1 });
+
+    res.status(200).json({
+      success: true,
+      count: tags.length,
+      data: tags,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getChapterFullDetails = async (req, res, next) => {
+  try {
+    const { chapterId } = req.params;
+    // if (!(await enforceSubscription(req.user._id, res))) return;
+
+    // 1. Chapter ki details find karein
+    // 2. Videos ko populate karein (Jo is chapterId se match karti hon)
+    const chapterDetails = await Chapter.findById(chapterId)
+      .populate('courseId', 'name') // Optional: Course ka naam chahiye toh
+      .populate('topicId', 'name');
+
+    if (!chapterDetails) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'Chapter not found' });
+    }
+
+    // 3. Is Chapter se judi saari videos fetch karein
+    const videos = await Video.find({ chapterId: chapterId }).sort({
+      order: 1,
+    });
+
+    // 4. Sab kuch combine karke response bhejein
+    res.status(200).json({
+      success: true,
+      data: {
+        ...chapterDetails._doc, // Chapter info (name, desc, image, mcqs)
+        content: {
+          videos: videos, // Saari videos with notesUrl and thumbnailUrl
+          totalVideos: videos.length,
+          // Agar notes alag model mein hain toh yahan populate kar sakte hain
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * common validation helper
+ */
+const validateBookmark = ({ type, itemId }) => {
+  if (!type) return 'type is required';
+  if (!itemId) return 'itemId is required';
+  return null;
+};
+
+export const addBookmark = async (req, res) => {
+  try {
+    const { type, mcqId, chapterId, subSubjectId, topicId, category } =
+      req.body;
+
+    // 1. Basic Validation
+    if (!type || !category) {
+      return res.status(400).json({
+        success: false,
+        message: 'type and category are required',
+      });
+    }
+
+    const bookmarkData = {
+      userId: req.user._id,
+      type,
+      category,
+      itemId:
+        type === 'mcq'
+          ? mcqId
+          : type === 'chapter'
+            ? chapterId
+            : type === 'topic'
+              ? topicId
+              : type === 'sub-subject'
+                ? subSubjectId
+                : null,
+    };
+
+    // 3. Create Bookmark
+    const bookmark = await Bookmark.create(bookmarkData);
+
+    res.status(201).json({
+      success: true,
+      message: `Bookmark added to ${category}`,
+      bookmark,
+    });
+  } catch (error) {
+    // Duplicate Key Error (Unique Index ki wajah se)
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: 'Already bookmarked in this category',
+      });
+    }
+
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+/**
+ * @route   DELETE /api/bookmarks
+ */
+export const removeBookmark = async (req, res) => {
+  try {
+    const error = validateBookmark(req.body);
+    if (error) {
+      return res.status(400).json({ success: false, message: error });
+    }
+
+    await Bookmark.findOneAndDelete({
+      userId: req.user._id,
+      type: req.body.type,
+      itemId: req.body.itemId,
+    });
+
+    res.json({ success: true, message: 'Bookmark removed' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * @route   GET /api/bookmarks
+ */
+export const getMyBookmarks = async (req, res) => {
+  try {
+    const bookmarks = await Bookmark.find({
+      userId: req.user._id,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const populatedBookmarks = await Promise.all(
+      bookmarks.map(async (bookmark) => {
+        let itemData = null;
+
+        if (bookmark.type === 'mcq') {
+          itemData = await MCQ.findById(bookmark.itemId)
+            .select('question options difficulty')
+            .lean();
+        }
+
+        if (bookmark.type === 'chapter') {
+          itemData = await Chapter.findById(bookmark.itemId)
+            .select('name description image')
+            .lean();
+        }
+
+        if (bookmark.type === 'topic') {
+          itemData = await Topic.findById(bookmark.itemId)
+            .select('name description')
+            .lean();
+        }
+
+        if (bookmark.type === 'sub-subject') {
+          itemData = await SubSubject.findById(bookmark.itemId)
+            .select('name image')
+            .lean();
+        }
+
+        return {
+          ...bookmark,
+          itemData,
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      count: populatedBookmarks.length,
+      data: populatedBookmarks,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const getBookmarkSummary = async (req, res) => {
+  try {
+    // const { userId } = req.query; // Ab Query se userId lenge
+    const userId = req.user._id;
+
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'userId is required' });
+    }
+
+    const counts = await Bookmark.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+    ]);
+
+    const result = { all: 0, important: 0, veryimportant: 0, mostimportant: 0 };
+    counts.forEach((item) => {
+      if (result.hasOwnProperty(item._id)) {
+        result[item._id] = item.count;
+      }
+      result.all += item.count;
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ 2. Get Bookmarks List (Folder wise ya "All")
+export const getBookmarksList = async (req, res) => {
+  try {
+    // const { userId, category } = req.query; // Query se userId aur category
+    const { type, itemId, category } = req.body;
+    const userId = req.user._id; // ✅ Wapas token se ID lene lage
+
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'userId is required' });
+    }
+
+    let filter = { userId };
+    if (category && category !== 'all') {
+      filter.category = category;
+    }
+
+    const list = await Bookmark.find(filter).sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, count: list.length, data: list });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ 3. Toggle Bookmark (Add/Remove Logic)
+// export const toggleBookmark = async (req, res) => {
+//   try {
+//     const { userId, type, itemId, category } = req.body;
+
+//     if (!userId || !type || !category) {
+//       return res
+//         .status(400)
+//         .json({
+//           success: false,
+//           message: 'userId, type and category are required',
+//         });
+//     }
+
+//     let query = { userId, type, category };
+//     if (type === 'mcq') query.mcqId = itemId;
+//     else if (type === 'topic') query.topicId = itemId;
+//     else if (type === 'chapter') query.chapterId = itemId;
+//     else if (type === 'sub-subject') query.subSubjectId = itemId;
+
+//     const existing = await Bookmark.findOne(query);
+
+//     if (existing) {
+//       await Bookmark.findByIdAndDelete(existing._id);
+//       return res
+//         .status(200)
+//         .json({ success: true, message: `Removed from ${category}` });
+//     } else {
+//       await Bookmark.create(query);
+//       return res
+//         .status(201)
+//         .json({ success: true, message: `Added to ${category}` });
+//     }
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
+export const toggleBookmark = async (req, res) => {
+  try {
+    const { type, itemId, category } = req.body;
+    const userId = req.user._id;
+
+    if (!itemId || !type) {
+      return res.status(400).json({
+        success: false,
+        message: 'itemId and type are required',
+      });
+    }
+
+    const query = { userId, type, itemId };
+
+    const existing = await Bookmark.findOne(query);
+
+    if (existing) {
+      await Bookmark.deleteOne(query);
+      return res.status(200).json({
+        success: true,
+        isBookmarked: false,
+        message: 'Removed from bookmarks',
+      });
+    }
+
+    await Bookmark.create({
+      userId,
+      type,
+      itemId,
+      category,
+    });
+
+    return res.status(201).json({
+      success: true,
+      isBookmarked: true,
+      message: 'Added to bookmarks',
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+export const getUserDashboardStats = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    // if (!(await enforceSubscription(userId, res))) return;
+
+    // User model se tracking fields nikaalein
+    const user = await UserModel.findById(userId).select(
+      'completedModulesCount completedChapters'
+    );
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: 'User not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        // Ye wahi count hai jo MCQ aur Video dono se update ho raha hai
+        totalCompletedModules: user.completedModulesCount || 0,
+
+        // Agar aapko list bhi chahiye ki kaunse chapters complete hue
+        completedChapterIds: user.completedChapters,
+
+        // Aap yahan aur bhi stats add kar sakte hain (jaise certificates, marks etc.)
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+export const getfaculty = async (req, res) => {
+  try {
+    const list = await Faculty.find();
+    res.status(200).json(list);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: 'Error fetching data', error: error.message });
+  }
+};
+export const getAllTopicsCount = async (req, res) => {
+  try {
+    // 1. Database mein jitne bhi topics hain unka total count
+    const totalTopics = await Topic.countDocuments({});
+
+    // 2. Agar aapko sirf "active" topics count karne hain:
+    // const activeTopics = await Topic.countDocuments({ status: 'active' });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Total topics fetched successfully',
+      data: {
+        totalTopics: totalTopics, // Saare topics (active + inactive)
+        // activeTopics: activeTopics      // Sirf active topics
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching topic count',
+      error: error.message,
+    });
+  }
+};
+export const applyPromoCode = async (req, res) => {
+  try {
+    const { promoCode, planId, selectedMonths } = req.body;
+
+    // 1. Find Promo Code
+    const promo = await PromoCode.findOne({
+      code: promoCode.toUpperCase(),
+      isActive: true,
+    });
+    if (!promo) {
+      return res
+        .status(404)
+        .json({ message: 'Invalid or inactive promo code' });
+    }
+
+    // 2. Check Expiry
+    if (new Date() > new Date(promo.expiryDate)) {
+      return res.status(400).json({ message: 'Promo code has expired' });
+    }
+
+    // 3. Check Usage Limit
+    if (promo.usedCount >= promo.usageLimit) {
+      return res
+        .status(400)
+        .json({ message: 'Promo code usage limit reached' });
+    }
+
+    // 4. Find Subscription Plan
+    const plan = await SubscriptionPlan.findById(planId);
+    if (!plan) {
+      return res.status(404).json({ message: 'Subscription plan not found' });
+    }
+
+    // 5. Get Price for the selected months
+    const pricingTier = plan.pricing.find((p) => p.months === selectedMonths);
+    if (!pricingTier) {
+      return res.status(400).json({
+        message: `This plan does not offer a ${selectedMonths} month duration`,
+      });
+    }
+
+    const originalPrice = pricingTier.price;
+
+    // 6. Check Applicability (Months Restriction)
+    // Agar promo code sirf 6 ya 12 months ke liye hai, aur user ne 1 month select kiya hai
+    if (
+      promo.applicableMonths.length > 0 &&
+      !promo.applicableMonths.includes(selectedMonths)
+    ) {
+      return res.status(400).json({
+        message: `This promo code is only applicable for ${promo.applicableMonths.join(', ')} month plans`,
+      });
+    }
+
+    // 7. Check Min Purchase
+    if (originalPrice < promo.minPurchase) {
+      return res.status(400).json({
+        message: `Minimum purchase of ₹${promo.minPurchase} required for this promo code`,
+      });
+    }
+
+    // 8. Calculate Discount
+    let discountAmount = 0;
+    const dValue = Number(promo.discountValue); // Force conversion to number
+    const mDiscount = Number(promo.maxDiscount);
+
+    if (promo.discountType === 'percentage') {
+      // 12000 * 60 / 100 = 7200
+      discountAmount = (originalPrice * dValue) / 100;
+
+      console.log('Calculated % Discount:', discountAmount); // Check karein terminal mein
+
+      // Agar maxDiscount 0 se bada hai, tabhi cap lagayein
+      if (mDiscount > 0 && discountAmount > mDiscount) {
+        discountAmount = mDiscount;
+        console.log('Capped by maxDiscount:', mDiscount);
+      }
+    } else {
+      discountAmount = dValue;
+    }
+
+    let finalAmount = originalPrice - discountAmount;
+    if (finalAmount < 0) finalAmount = 0;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        promoCode: promo.code,
+        originalPrice: originalPrice,
+        discountAmount: discountAmount,
+        finalAmount: finalAmount,
+        message: 'Promo code applied successfully!',
+      },
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: 'Internal Server Error', error: error.message });
+  }
+};
