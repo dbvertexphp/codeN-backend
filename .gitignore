@@ -30,4 +30,7 @@ Thumbs.db
 dist/
 build/
 
+# Firebase secrets
+config/firebase-service-account
+config/firebase-service-account.json
 firebase-service-account.json
