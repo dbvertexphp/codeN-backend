@@ -182,7 +182,7 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK' });
 });
 
-// --- Error Handling ---
+// --- Error Handling ----
 app.use(notFound);
 app.use(errorHandler);
 app.use((err, req, res, next) => {
