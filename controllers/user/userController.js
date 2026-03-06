@@ -138,58 +138,166 @@ const updateUserChapterProgress = async (userId, chapterId) => {
 //   }
 // };
 
+// export const loginByGoogle = async (req, res, next) => {
+//   console.log('Server time before verify:', new Date().toISOString());
+//   try {
+//     const { token } = req.body;
+//     console.log('Incoming Token:', token ? 'Token Received' : 'No Token');
+
+//     if (!token) {
+//       return res.status(400).json({ message: 'Google ID token is required' });
+//     }
+//     console.log('Token Length:', token.length);
+//     console.log('Token Starts With:', token.substring(0, 10));
+//     let decodedToken;
+//     try {
+//       // Backend project ID log kar rahe hain verify karne ke liye
+//       const currentProjectId = admin.app().options.projectId;
+//       console.log('🔍 Verifying token for project:', currentProjectId);
+//       console.log('Token Length:', token.length);
+//       console.log('Token Starts With:', token.substring(0, 10));
+//       // Firebase Token Verify karna
+//       decodedToken = await admin.auth().verifyIdToken(token);
+//       console.log('✅ Token VERIFIED successfully!');
+//       console.log('Decoded UID:', decodedToken.uid);
+//       console.log('Decoded email:', decodedToken.email);
+//       console.log('Full payload:', JSON.stringify(decodedToken, null, 2));
+//     } catch (err) {
+//       console.error('❌ VERIFY ERROR DETAILS:');
+//       console.error('Error code:', err.code);
+//       console.error('Error message:', err.message);
+//       console.error('Full error object:', err);
+//       return res.status(401).json({
+//         message: 'Invalid or Expired Firebase Token',
+//         error_detail: err.message,
+//       });
+//     }
+
+//     // Yahan tak tabhi pahunchega jab token SUCCESSFUL verify ho chuka ho
+//     const email = decodedToken.email?.toLowerCase().trim();
+//     const googleId = decodedToken.uid;
+//     const name = decodedToken.name || 'Google User';
+//     const picture = decodedToken.picture || null;
+
+//     if (!email) {
+//       return res
+//         .status(400)
+//         .json({ message: 'Invalid Google token payload: Email missing' });
+//     }
+
+//     // --- Database Logic ---
+//     let user = await UserModel.findOne({ email });
+
+//     if (!user) {
+//       // Naya User Banana
+//       user = await UserModel.create({
+//         name,
+//         email,
+//         googleId,
+//         profileImage: picture,
+//         signUpBy: 'google',
+//         isEmailVerified: true,
+//         role: 'user',
+//         trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+//         isTrialExpired: false,
+//       });
+//       console.log('🆕 New User Created via Google Sign-In');
+//     } else {
+//       // Existing User Update karna
+//       let isUpdated = false;
+//       if (!user.googleId) {
+//         user.googleId = googleId;
+//         isUpdated = true;
+//       }
+//       if (!user.profileImage && picture) {
+//         user.profileImage = picture;
+//         isUpdated = true;
+//       }
+
+//       if (isUpdated) await user.save();
+//       console.log('🏠 Existing User Logged In');
+//     }
+//     // 🔐 Subscription / Trial Check
+//     // if (!(await enforceSubscription(user._id, res))) return;
+
+//     // JWT Token generation (Backend specific)
+//     const { accessToken, refreshToken } = generateToken(user._id);
+
+//     user.refreshToken = refreshToken;
+//     await user.save();
+
+//     const safeUser = user.toObject();
+//     delete safeUser.password; // Password agar ho toh security ke liye delete karein
+//     delete safeUser.refreshToken;
+
+//     return res.status(200).json({
+//       success: true,
+//       accessToken,
+//       refreshToken,
+//       user: safeUser,
+//     });
+//   } catch (err) {
+//     console.error('🔥 Global Google Login Error:', err);
+//     return res.status(500).json({
+//       message: 'Internal Server Error during Google Login',
+//       error_detail: err.message,
+//     });
+//   }
+// };
+
+
 export const loginByGoogle = async (req, res, next) => {
   console.log('Server time before verify:', new Date().toISOString());
+
   try {
     const { token } = req.body;
-    console.log('Incoming Token:', token ? 'Token Received' : 'No Token');
 
     if (!token) {
       return res.status(400).json({ message: 'Google ID token is required' });
     }
-    console.log('Token Length:', token.length);
-    console.log('Token Starts With:', token.substring(0, 10));
+
     let decodedToken;
+
     try {
-      // Backend project ID log kar rahe hain verify karne ke liye
       const currentProjectId = admin.app().options.projectId;
       console.log('🔍 Verifying token for project:', currentProjectId);
-      console.log('Token Length:', token.length);
-      console.log('Token Starts With:', token.substring(0, 10));
-      // Firebase Token Verify karna
+
       decodedToken = await admin.auth().verifyIdToken(token);
+
       console.log('✅ Token VERIFIED successfully!');
       console.log('Decoded UID:', decodedToken.uid);
       console.log('Decoded email:', decodedToken.email);
-      console.log('Full payload:', JSON.stringify(decodedToken, null, 2));
     } catch (err) {
-      console.error('❌ VERIFY ERROR DETAILS:');
-      console.error('Error code:', err.code);
-      console.error('Error message:', err.message);
-      console.error('Full error object:', err);
+      console.error('❌ VERIFY ERROR:', err);
+
       return res.status(401).json({
         message: 'Invalid or Expired Firebase Token',
         error_detail: err.message,
       });
     }
 
-    // Yahan tak tabhi pahunchega jab token SUCCESSFUL verify ho chuka ho
     const email = decodedToken.email?.toLowerCase().trim();
     const googleId = decodedToken.uid;
     const name = decodedToken.name || 'Google User';
     const picture = decodedToken.picture || null;
 
     if (!email) {
-      return res
-        .status(400)
-        .json({ message: 'Invalid Google token payload: Email missing' });
+      return res.status(400).json({
+        message: 'Invalid Google token payload: Email missing',
+      });
     }
 
-    // --- Database Logic ---
+    // ===================================
+    // CHECK USER
+    // ===================================
+
     let user = await UserModel.findOne({ email });
 
+    // ===================================
+    // CREATE USER IF NOT EXISTS
+    // ===================================
+
     if (!user) {
-      // Naya User Banana
       user = await UserModel.create({
         name,
         email,
@@ -201,33 +309,72 @@ export const loginByGoogle = async (req, res, next) => {
         trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
         isTrialExpired: false,
       });
+
       console.log('🆕 New User Created via Google Sign-In');
+
+      // ===================================
+      // 🎁 CREATE 10 DAYS FREE SUBSCRIPTION
+      // ===================================
+
+      const today = new Date();
+      const tenDaysLater = new Date();
+      tenDaysLater.setDate(today.getDate() + 10);
+
+      await Subscription.create({
+        user: user._id,
+        plan: null,
+        paymentId: null,
+        orderId: null,
+        status: 'active',
+        startDate: today,
+        endDate: tenDaysLater,
+      });
     } else {
-      // Existing User Update karna
+      // ===================================
+      // EXISTING USER UPDATE
+      // ===================================
+
       let isUpdated = false;
+
       if (!user.googleId) {
         user.googleId = googleId;
         isUpdated = true;
       }
+
       if (!user.profileImage && picture) {
         user.profileImage = picture;
         isUpdated = true;
       }
 
-      if (isUpdated) await user.save();
+      if (isUpdated) {
+        await user.save();
+      }
+
       console.log('🏠 Existing User Logged In');
     }
-    // 🔐 Subscription / Trial Check
-    // if (!(await enforceSubscription(user._id, res))) return;
 
-    // JWT Token generation (Backend specific)
+    // ===================================
+    // ACCOUNT STATUS CHECK
+    // ===================================
+
+    if (user.status !== 'active') {
+      return res.status(403).json({
+        message: 'Account is blocked or inactive',
+      });
+    }
+
+    // ===================================
+    // GENERATE TOKENS
+    // ===================================
+
     const { accessToken, refreshToken } = generateToken(user._id);
 
     user.refreshToken = refreshToken;
     await user.save();
 
     const safeUser = user.toObject();
-    delete safeUser.password; // Password agar ho toh security ke liye delete karein
+
+    delete safeUser.password;
     delete safeUser.refreshToken;
 
     return res.status(200).json({
@@ -238,12 +385,14 @@ export const loginByGoogle = async (req, res, next) => {
     });
   } catch (err) {
     console.error('🔥 Global Google Login Error:', err);
+
     return res.status(500).json({
       message: 'Internal Server Error during Google Login',
       error_detail: err.message,
     });
   }
 };
+
 const generateOtp = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
