@@ -20,9 +20,16 @@ import {
   getMySubscription,
   buySubscription,
   postRating,
-  getAllSubSubjectsForUser,
-  getChaptersByTopicForUser,
-  // submitTestByChapter,
+  getTopicsByChapterForUser,
+  getTopicFullDetails,
+  getChaptersWithTopicCountBySubSubject,
+  getTopicVideosForUser,
+  getCustomPracticeMCQs,
+  resumeCustomTest,
+  saveCustomAnswer,
+  submitCustomTest,
+  restartCustomTest,
+  getCustomTestHistory,
   getMe,
   getCourseListSimple,
   logout,
@@ -57,19 +64,6 @@ import {
   getChapterVideoByChapterId,
   getVideoData,
 } from '../../controllers/admin/Video/video.controller.js';
-
-import {
-  getTopicsByChapterForUser,
-  getTopicFullDetails,
-  getChaptersWithTopicCountBySubSubject,
-  getTopicVideosForUser,
-  getCustomPracticeMCQs,
-  resumeCustomTest,
-  saveCustomAnswer,
-  submitCustomTest,
-  restartCustomTest,
-  getCustomTestHistory,
-} from '../../controllers/user/userController.js';
 
 import { testLimiter, otpLimiter } from '../../middleware/limiter.js';
 /**
@@ -263,7 +257,7 @@ userRouter.post('/login', login);
  *       401:
  *         description: Unauthorized
  */
-userRouter.post('/logout',  logout);
+userRouter.post('/logout', protect, logout);
 userRouter.get('/auth-me', protect, getMe);
 userRouter.post('/forgot-password', otpLimiter, forgetPassword);
 userRouter.post('/change-password', otpLimiter, changePassword);

@@ -1,6 +1,5 @@
 import express from 'express';
 import dotenv from 'dotenv';
-dotenv.config();
 import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
@@ -35,14 +34,13 @@ import faculty from './routes/admin/faculty/faculty.routes.js';
 import promo from './routes/admin/promo/promo.routes.js';
 import Rating from './models/admin/Rating.js';
 import mongoose from 'mongoose';
-
 // Middleware Imports
 import { errorHandler, notFound } from './middleware/errorMiddleware.js';
 // import { startSubscriptionCron } from './cron/subscription.cron.js';
 
 // Load Env
+dotenv.config();
 
-import paymentRoutes from "./routes/payment.routes.js";
 // Firebase Admin Setup
 const serviceAccount = JSON.parse(
   fs.readFileSync(
@@ -137,16 +135,15 @@ const __dirname = path.resolve();
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Swagger UI route
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-// if (process.env.NODE_ENV !== 'production') {
-//   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-// }
+// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+}
 
 // --- API Routes ---
 
 // Admin Specific Routes
 app.use('/api/admin', adminRoutes);
-app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', AboutUs);
 app.use('/api/admin/courses', courseRoutes);
 app.use('/api/admin/subjects', subjectRoutes);
@@ -161,7 +158,8 @@ app.use('/api/admin/privacy', PrivacyRoutes);
 app.use('/api/admin/videos', videoRoutes);
 app.use('/api/admin', PaymentList);
 app.use('/api/faculty', faculty);
-app.use('/api/promo', promo);
+// app.use('/api/promo', promo);
+app.use('/api/admin/promos', promo);
 // Shared/Other Routes
 app.use('/api/location', locationRoutes);
 // app.use('/api/bookmarks', bookmarkRoutes);

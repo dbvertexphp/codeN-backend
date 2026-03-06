@@ -30,7 +30,7 @@ import Faculty from '../../models/admin/faculty/faculty.model.js';
 import CustomTestAttempt from '../../models/user/customTestAttempt.model.js';
 import { enforceSubscription } from '../../utils/subscriptionHelper.js';
 import PromoCode from '../../models/admin/promo/promo.model.js';
-import Subscription from "../../models/Subscription.js";
+import Subscription from '../../models/Subscription.js';
 
 const updateUserChapterProgress = async (userId, chapterId) => {
   const user = await UserModel.findById(userId);
@@ -421,52 +421,52 @@ export const register = async (req, res, next) => {
     // const mobileOtp = generateOtp();
 
     const [user] = await UserModel.create(
-  [
-    {
-      name,
-      email: normalizedEmail,
-      password,
-      otp: emailOtp,
-      otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      lastOtpSentAt: now,
-      mobile,
-      isMobileVerified: true,
-      address,
-      countryId,
-      stateId,
-      cityId,
-      collegeId: college._id,
-      classId: finalClassId,
-      admissionYear,
-      signUpBy: 'email',
-      role: 'user',
-      trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      isTrialExpired: false,
-    },
-  ],
-  { session }
-);
+      [
+        {
+          name,
+          email: normalizedEmail,
+          password,
+          otp: emailOtp,
+          otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+          lastOtpSentAt: now,
+          mobile,
+          isMobileVerified: true,
+          address,
+          countryId,
+          stateId,
+          cityId,
+          collegeId: college._id,
+          classId: finalClassId,
+          admissionYear,
+          signUpBy: 'email',
+          role: 'user',
+          trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+          isTrialExpired: false,
+        },
+      ],
+      { session }
+    );
 
-// 🔥 SUBSCRIPTION CREATE KARNA YAHA HAI
+    // 🔥 SUBSCRIPTION CREATE KARNA YAHA HAI
 
-const today = new Date();
-const tenDaysLater = new Date();
-tenDaysLater.setDate(today.getDate() + 10);
+    const today = new Date();
+    const tenDaysLater = new Date();
+    tenDaysLater.setDate(today.getDate() + 10);
 
-await Subscription.create(
-  [
-    {
-      user: user._id,
-      plan: null,
-      paymentId: null,
-      orderId: null,
-      status: "active",
-      startDate: today,
-      endDate: tenDaysLater,
-    },
-  ],
-  { session }
-);
+    await Subscription.create(
+      [
+        {
+          user: user._id,
+          plan: null,
+          paymentId: null,
+          orderId: null,
+          status: 'active',
+          startDate: today,
+          endDate: tenDaysLater,
+        },
+      ],
+      { session }
+    );
 
     // 9️⃣ Commit and Cleanup
     await session.commitTransaction();
@@ -696,14 +696,14 @@ export const login = async (req, res, next) => {
         message: 'Invalid credentials',
       });
     }
- const today = new Date();
+    const today = new Date();
 
     // =========================
     // 🔄 EXPIRE OLD SUBSCRIPTIONS
     // =========================
     await Subscription.updateMany(
-      { user: user._id, endDate: { $lt: today }, status: { $ne: "expired" } },
-      { $set: { status: "expired" } }
+      { user: user._id, endDate: { $lt: today }, status: { $ne: 'expired' } },
+      { $set: { status: 'expired' } }
     );
 
     // =========================
@@ -711,13 +711,13 @@ export const login = async (req, res, next) => {
     // =========================
     const activeSub = await Subscription.findOne({
       user: user._id,
-      status: "active",
-      endDate: { $gte: today }
+      status: 'active',
+      endDate: { $gte: today },
     });
 
     // Agar active subscription hai -> active, nahi -> expired
     const hasActiveSubscription = !!activeSub;
-    const subscriptionStatus = hasActiveSubscription ? "active" : "expired";
+    const subscriptionStatus = hasActiveSubscription ? 'active' : 'expired';
     // 🔐 Subscription / Trial Check
     // if (!(await enforceSubscription(user._id, res))) return;
     // =========================
@@ -743,7 +743,7 @@ export const login = async (req, res, next) => {
       user: safeUser,
       accessToken,
       refreshToken,
-      activesubscription:hasActiveSubscription
+      activesubscription: hasActiveSubscription,
     });
   } catch (error) {
     next(error);
@@ -953,7 +953,7 @@ export const changePassword = async (req, res, next) => {
 
 export const logout = async (req, res, next) => {
   try {
-   const { userId } = req.body; 
+    const { userId } = req.body;
 
     // DB se token remove karo
     const user = await UserModel.findByIdAndUpdate(
@@ -997,14 +997,14 @@ export const getMe = async (req, res, next) => {
         message: 'User not found',
       });
     }
-const today = new Date();
+    const today = new Date();
 
     // =========================
     // 🔄 EXPIRE OLD SUBSCRIPTIONS
     // =========================
     await Subscription.updateMany(
-      { user: user._id, endDate: { $lt: today }, status: { $ne: "expired" } },
-      { $set: { status: "expired" } }
+      { user: user._id, endDate: { $lt: today }, status: { $ne: 'expired' } },
+      { $set: { status: 'expired' } }
     );
 
     // =========================
@@ -1012,13 +1012,13 @@ const today = new Date();
     // =========================
     const activeSub = await Subscription.findOne({
       user: req.user._id,
-      status: "active",
-      endDate: { $gte: today }
+      status: 'active',
+      endDate: { $gte: today },
     });
 
     // Agar active subscription hai -> active, nahi -> expired
     const hasActiveSubscription = !!activeSub;
-    const subscriptionStatus = hasActiveSubscription ? "active" : "expired";
+    const subscriptionStatus = hasActiveSubscription ? 'active' : 'expired';
     return res.status(200).json({
       success: true,
       message: 'User session valid',
@@ -1671,25 +1671,25 @@ export const getTopicFullDetails = async (req, res) => {
           description: topic.description,
         },
         hierarchy: {
-  subject: topic.chapterId?.subSubjectId?.subjectId
-    ? {
-        _id: topic.chapterId.subSubjectId.subjectId._id,
-        name: topic.chapterId.subSubjectId.subjectId.name,
-      }
-    : null,
-  subSubject: topic.chapterId?.subSubjectId
-    ? {
-        _id: topic.chapterId.subSubjectId._id,
-        name: topic.chapterId.subSubjectId.name,
-      }
-    : null,
-  chapter: topic.chapterId
-    ? {
-        _id: topic.chapterId._id,
-        name: topic.chapterId.name,
-      }
-    : null,
-},
+          subject: topic.chapterId?.subSubjectId?.subjectId
+            ? {
+                _id: topic.chapterId.subSubjectId.subjectId._id,
+                name: topic.chapterId.subSubjectId.subjectId.name,
+              }
+            : null,
+          subSubject: topic.chapterId?.subSubjectId
+            ? {
+                _id: topic.chapterId.subSubjectId._id,
+                name: topic.chapterId.subSubjectId.name,
+              }
+            : null,
+          chapter: topic.chapterId
+            ? {
+                _id: topic.chapterId._id,
+                name: topic.chapterId.name,
+              }
+            : null,
+        },
         stats: {
           chapters: totalChapters,
           videos: totalVideos,
@@ -2574,28 +2574,28 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
       mode = 'regular',
       discard = false,
     } = req.body;
- 
+
     const userId = req.user._id;
- 
+
     const testMode = mode?.toLowerCase() === 'exam' ? 'exam' : 'regular';
- 
+
     // ====================================================
     // 🔥 EXISTING ATTEMPT CHECK
     // ====================================================
- 
+
     let existingAttempt = await CustomTestAttempt.findOne({ userId }).populate(
       'mcqIds'
     );
- 
+
     if (existingAttempt) {
       const filtersChanged = existingAttempt.mode !== testMode;
- 
+
       if (discard || filtersChanged) {
         await CustomTestAttempt.deleteOne({ _id: existingAttempt._id });
         existingAttempt = null;
       }
     }
- 
+
     if (existingAttempt && existingAttempt.status === 'in_progress') {
       return res.status(200).json({
         success: true,
@@ -2610,13 +2610,13 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
         data: existingAttempt.mcqIds,
       });
     }
- 
+
     // ====================================================
     // 🔥 SUBJECT → CHAPTER RESOLUTION
     // ====================================================
- 
+
     let chapterIds = [];
- 
+
     if (subjectIds.includes('all')) {
       const chapters = await Chapter.find({ status: 'active' }).select('_id');
       chapterIds = chapters.map((c) => c._id);
@@ -2624,54 +2624,54 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
       const validSubjectIds = subjectIds.map(
         (id) => new mongoose.Types.ObjectId(id)
       );
- 
+
       const subSubjects = await SubSubject.find({
         subjectId: { $in: validSubjectIds },
         status: 'active',
       }).select('_id');
- 
+
       const subSubjectIds = subSubjects.map((s) => s._id);
- 
+
       const chapters = await Chapter.find({
         subSubjectId: { $in: subSubjectIds },
         status: 'active',
       }).select('_id');
- 
+
       chapterIds = chapters.map((c) => c._id);
     }
- 
+
     if (!chapterIds.length) {
       return res.status(404).json({
         success: false,
         message: 'No chapters found for selected subjects',
       });
     }
- 
+
     // ====================================================
     // 🔥 BUILD MCQ FILTER
     // ====================================================
- 
+
     const filter = {
       status: 'active',
       chapterId: { $in: chapterIds },
       testMode: testMode,
     };
- 
+
     if (difficulty !== 'all') {
       filter.difficulty = difficulty.toLowerCase();
     }
- 
+
     if (!tagIds.includes('all')) {
       const validTagIds = tagIds.map((id) => new mongoose.Types.ObjectId(id));
       filter.tagId = { $in: validTagIds };
     }
- 
+
     // ====================================================
     // 🏆 CHECK IF SUBJECT HAS MCQs
     // ====================================================
- 
+
     const totalAvailableMCQ = await MCQ.countDocuments(filter);
- 
+
     if (!totalAvailableMCQ) {
       return res.status(404).json({
         success: false,
@@ -2679,17 +2679,17 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
           'No MCQs available for selected subject/tags/difficulty/mode. Please change filters.',
       });
     }
- 
+
     // ====================================================
     // 🔥 FETCH RANDOM MCQs
     // ====================================================
- 
+
     const sampleSize = Math.min(20, totalAvailableMCQ);
- 
+
     const mcqs = await MCQ.aggregate([
       { $match: filter },
       { $sample: { size: sampleSize } },
- 
+
       {
         $lookup: {
           from: 'tags',
@@ -2698,7 +2698,7 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
           as: 'tagDetails',
         },
       },
- 
+
       {
         $project: {
           question: 1,
@@ -2713,11 +2713,11 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
         },
       },
     ]);
- 
+
     // ====================================================
     // 🔥 CREATE ATTEMPT
     // ====================================================
- 
+
     const attempt = await CustomTestAttempt.create({
       userId,
       mcqIds: mcqs.map((m) => m._id),
@@ -2725,9 +2725,9 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
       status: 'in_progress',
       startedAt: new Date(),
     });
- 
+
     const isExamMode = testMode === 'exam';
- 
+
     return res.status(200).json({
       success: true,
       attemptId: attempt._id,
@@ -3425,103 +3425,135 @@ export const getAllTopicsCount = async (req, res) => {
     });
   }
 };
+
 export const applyPromoCode = async (req, res) => {
   try {
     const { promoCode, planId, selectedMonths } = req.body;
 
-    // 1. Find Promo Code
+    // Validate input
+    if (!promoCode || !planId || !selectedMonths) {
+      return res.status(400).json({
+        success: false,
+        message: 'promoCode, planId and selectedMonths are required',
+      });
+    }
+
+    const months = Number(selectedMonths);
+
+    // 1️⃣ Find Promo Code
     const promo = await PromoCode.findOne({
       code: promoCode.toUpperCase(),
       isActive: true,
     });
+
     if (!promo) {
-      return res
-        .status(404)
-        .json({ message: 'Invalid or inactive promo code' });
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid or inactive promo code',
+      });
     }
 
-    // 2. Check Expiry
+    // 2️⃣ Check Expiry
     if (new Date() > new Date(promo.expiryDate)) {
-      return res.status(400).json({ message: 'Promo code has expired' });
+      return res.status(400).json({
+        success: false,
+        message: 'Promo code has expired',
+      });
     }
 
-    // 3. Check Usage Limit
+    // 3️⃣ Check Usage Limit
     if (promo.usedCount >= promo.usageLimit) {
-      return res
-        .status(400)
-        .json({ message: 'Promo code usage limit reached' });
+      return res.status(400).json({
+        success: false,
+        message: 'Promo code usage limit reached',
+      });
     }
 
-    // 4. Find Subscription Plan
+    // 4️⃣ Find Subscription Plan
     const plan = await SubscriptionPlan.findById(planId);
+
     if (!plan) {
-      return res.status(404).json({ message: 'Subscription plan not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Subscription plan not found',
+      });
     }
 
-    // 5. Get Price for the selected months
-    const pricingTier = plan.pricing.find((p) => p.months === selectedMonths);
+    // 5️⃣ Get Pricing Tier
+    const pricingTier = plan.pricing.find((p) => p.months === months);
+
     if (!pricingTier) {
       return res.status(400).json({
-        message: `This plan does not offer a ${selectedMonths} month duration`,
+        success: false,
+        message: `This plan does not offer a ${months} month duration`,
       });
     }
 
-    const originalPrice = pricingTier.price;
+    const originalPrice = Number(pricingTier.price);
 
-    // 6. Check Applicability (Months Restriction)
-    // Agar promo code sirf 6 ya 12 months ke liye hai, aur user ne 1 month select kiya hai
+    // 6️⃣ Check Applicable Months
     if (
+      promo.applicableMonths &&
       promo.applicableMonths.length > 0 &&
-      !promo.applicableMonths.includes(selectedMonths)
+      !promo.applicableMonths.includes(months)
     ) {
       return res.status(400).json({
-        message: `This promo code is only applicable for ${promo.applicableMonths.join(', ')} month plans`,
+        success: false,
+        message: `Promo code valid only for ${promo.applicableMonths.join(
+          ', '
+        )} month plans`,
       });
     }
 
-    // 7. Check Min Purchase
+    // 7️⃣ Check Minimum Purchase
     if (originalPrice < promo.minPurchase) {
       return res.status(400).json({
-        message: `Minimum purchase of ₹${promo.minPurchase} required for this promo code`,
+        success: false,
+        message: `Minimum purchase of ₹${promo.minPurchase} required`,
       });
     }
 
-    // 8. Calculate Discount
+    // 8️⃣ Calculate Discount
     let discountAmount = 0;
-    const dValue = Number(promo.discountValue); // Force conversion to number
-    const mDiscount = Number(promo.maxDiscount);
+    const discountValue = Number(promo.discountValue);
+    const maxDiscount = Number(promo.maxDiscount);
 
     if (promo.discountType === 'percentage') {
-      // 12000 * 60 / 100 = 7200
-      discountAmount = (originalPrice * dValue) / 100;
+      discountAmount = (originalPrice * discountValue) / 100;
 
-      console.log('Calculated % Discount:', discountAmount); // Check karein terminal mein
-
-      // Agar maxDiscount 0 se bada hai, tabhi cap lagayein
-      if (mDiscount > 0 && discountAmount > mDiscount) {
-        discountAmount = mDiscount;
-        console.log('Capped by maxDiscount:', mDiscount);
+      if (maxDiscount > 0 && discountAmount > maxDiscount) {
+        discountAmount = maxDiscount;
       }
     } else {
-      discountAmount = dValue;
+      discountAmount = discountValue;
     }
 
+    // 9️⃣ Final Amount
     let finalAmount = originalPrice - discountAmount;
-    if (finalAmount < 0) finalAmount = 0;
+
+    if (finalAmount < 0) {
+      finalAmount = 0;
+    }
 
     return res.status(200).json({
       success: true,
+      message: 'Promo code applied successfully',
       data: {
         promoCode: promo.code,
-        originalPrice: originalPrice,
-        discountAmount: discountAmount,
-        finalAmount: finalAmount,
-        message: 'Promo code applied successfully!',
+        planId: plan._id,
+        selectedMonths: months,
+        originalPrice,
+        discountAmount,
+        finalAmount,
       },
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: 'Internal Server Error', error: error.message });
+    console.error('Apply Promo Error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+      error: error.message,
+    });
   }
 };
