@@ -95,7 +95,7 @@ export const createOrder = async (req, res) => {
   }
 };
 
-const verifyPayment = async (req, res) => {
+export const verifyPayment = async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
       req.body;
@@ -122,7 +122,7 @@ const verifyPayment = async (req, res) => {
       });
     }
 
-    // 🔥 Already active check
+    // Already active check
     if (subscription.status === 'active') {
       return res.status(200).json({
         success: true,
@@ -152,8 +152,17 @@ const verifyPayment = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Payment verified & subscription activated',
+
+      success: true,
+      message: 'Payment verified & subscription activated',
+
+      planName: subscription.plan.name,
+      planId: subscription.plan._id,
+
       startDate: subscription.startDate,
       endDate: subscription.endDate,
+
+      status: subscription.status,
     });
   } catch (error) {
     console.log(error);
