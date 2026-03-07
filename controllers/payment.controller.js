@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import razorpay from '../config/razorpay.js';
 import SubscriptionPlan from '../models/admin/SubscriptionPlan/scriptionplan.model.js';
 import Subscription from '../models/Subscription.js';
+import UserModel from '../models/user/userModel.js';
 
 export const createOrder = async (req, res) => {
   try {
@@ -149,10 +150,18 @@ export const verifyPayment = async (req, res) => {
 
     await subscription.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Payment verified & subscription activated',
+    // ✅ USER MODEL UPDATE
+    await UserModel.findByIdAndUpdate(subscription.user, {
+      subscription: {
+        plan_id: subscription.plan._id,
+        startDate: subscription.startDate,
+        endDate: subscription.endDate,
+        isActive: true,
+      },
+      subscriptionStatus: 'premium_plus',
+    });
 
+    res.status(200).json({
       success: true,
       message: 'Payment verified & subscription activated',
 
