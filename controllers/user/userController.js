@@ -55,141 +55,57 @@ const updateUserChapterProgress = async (userId, chapterId) => {
 
 //working krishna
 // export const loginByGoogle = async (req, res, next) => {
-//   try {
-//     const { token } = req.body;
-
-//     if (!token) {
-//       return res.status(400).json({ message: 'Google ID token is required' });
-//     }
-
-//     // ✅ REAL TOKEN VERIFY
-//     // ✅ SECURE TOKEN VERIFY (NO GOOGLE HTTP CALL)
-//     let payload;
-
-//     try {
-//       const ticket = await client.verifyIdToken({
-//         idToken: token,
-//         audience: process.env.GOOGLE_CLIENT_ID,
-//       });
-
-//       payload = ticket.getPayload();
-//     } catch (err) {
-//       return res.status(401).json({ message: 'Invalid Google token' });
-//     }
-
-//     if (!payload?.email || !payload?.sub) {
-//       return res.status(400).json({ message: 'Invalid Google token payload' });
-//     }
-
-//     const email = payload.email.toLowerCase().trim();
-//     const googleId = payload.sub;
-//     const name = payload.name || 'Google User';
-//     const picture = payload.picture || null; // 👈 GOOGLE PROFILE IMAGE
-
-//     let user = await UserModel.findOne({ email });
-
-//     if (!user) {
-//       user = await UserModel.create({
-//         name,
-//         email,
-//         googleId,
-//         profileImage: picture,
-//         signUpBy: 'google',
-//         isEmailVerified: true,
-//         isMobileVerified: false,
-//         role: 'user',
-//       });
-//     } else {
-//       if (!user.googleId) user.googleId = googleId;
-
-//       if (!user.profileImage && picture) {
-//         user.profileImage = picture; // 👈 ADD THIS
-//       }
-//       if (user.signUpBy === 'email' && !user.isEmailVerified) {
-//         user.isEmailVerified = true;
-//         user.signUpBy = 'google';
-//       }
-//       await user.save();
-//     }
-
-//     if (user.status !== 'active') {
-//       return res
-//         .status(403)
-//         .json({ message: 'Account is blocked or inactive' });
-//     }
-
-//     const { accessToken, refreshToken } = generateToken(user._id); // updated below
-//     // 🔽 ADD THIS
-//     user.refreshToken = refreshToken;
-//     await user.save();
-//     const safeUser = user.toObject();
-//     delete safeUser.password;
-//     delete safeUser.otp;
-//     delete safeUser.otpExpiresAt;
-//     delete safeUser.refreshToken;
-
-//     return res.status(200).json({
-//       accessToken,
-//       refreshToken,
-//       user: safeUser,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-// export const loginByGoogle = async (req, res, next) => {
 //   console.log('Server time before verify:', new Date().toISOString());
+
 //   try {
 //     const { token } = req.body;
-//     console.log('Incoming Token:', token ? 'Token Received' : 'No Token');
-
+//     console.log('Token received:', token);
 //     if (!token) {
 //       return res.status(400).json({ message: 'Google ID token is required' });
 //     }
-//     console.log('Token Length:', token.length);
-//     console.log('Token Starts With:', token.substring(0, 10));
+
 //     let decodedToken;
+
 //     try {
-//       // Backend project ID log kar rahe hain verify karne ke liye
 //       const currentProjectId = admin.app().options.projectId;
 //       console.log('🔍 Verifying token for project:', currentProjectId);
-//       console.log('Token Length:', token.length);
-//       console.log('Token Starts With:', token.substring(0, 10));
-//       // Firebase Token Verify karna
+
 //       decodedToken = await admin.auth().verifyIdToken(token);
+
 //       console.log('✅ Token VERIFIED successfully!');
 //       console.log('Decoded UID:', decodedToken.uid);
 //       console.log('Decoded email:', decodedToken.email);
-//       console.log('Full payload:', JSON.stringify(decodedToken, null, 2));
 //     } catch (err) {
-//       console.error('❌ VERIFY ERROR DETAILS:');
-//       console.error('Error code:', err.code);
-//       console.error('Error message:', err.message);
-//       console.error('Full error object:', err);
+//       console.error('❌ VERIFY ERROR:', err);
+
 //       return res.status(401).json({
 //         message: 'Invalid or Expired Firebase Token',
 //         error_detail: err.message,
 //       });
 //     }
 
-//     // Yahan tak tabhi pahunchega jab token SUCCESSFUL verify ho chuka ho
 //     const email = decodedToken.email?.toLowerCase().trim();
 //     const googleId = decodedToken.uid;
 //     const name = decodedToken.name || 'Google User';
 //     const picture = decodedToken.picture || null;
 
 //     if (!email) {
-//       return res
-//         .status(400)
-//         .json({ message: 'Invalid Google token payload: Email missing' });
+//       return res.status(400).json({
+//         message: 'Invalid Google token payload: Email missing',
+//       });
 //     }
 
-//     // --- Database Logic ---
+//     // ===================================
+//     // CHECK USER
+//     // ===================================
+
 //     let user = await UserModel.findOne({ email });
 
+//     // ===================================
+//     // CREATE USER IF NOT EXISTS
+//     // ===================================
+
 //     if (!user) {
-//       // Naya User Banana
 //       user = await UserModel.create({
 //         name,
 //         email,
@@ -198,36 +114,91 @@ const updateUserChapterProgress = async (userId, chapterId) => {
 //         signUpBy: 'google',
 //         isEmailVerified: true,
 //         role: 'user',
-//         trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-//         isTrialExpired: false,
+//         // trialExpiry: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+//         // isTrialExpired: false,
 //       });
+
 //       console.log('🆕 New User Created via Google Sign-In');
+
+//       // ===================================
+//       // 🎁 CREATE 10 DAYS FREE SUBSCRIPTION
+//       // ===================================
+
+//       const today = new Date();
+//       const tenDaysLater = new Date();
+//       tenDaysLater.setDate(today.getDate() + 10);
+
+//       await Subscription.create({
+//         user: user._id,
+//         plan: null,
+//         paymentId: null,
+//         orderId: null,
+//         status: 'active',
+//         startDate: today,
+//         endDate: tenDaysLater,
+//       });
 //     } else {
-//       // Existing User Update karna
 //       let isUpdated = false;
+
 //       if (!user.googleId) {
 //         user.googleId = googleId;
 //         isUpdated = true;
 //       }
+
 //       if (!user.profileImage && picture) {
 //         user.profileImage = picture;
 //         isUpdated = true;
 //       }
 
-//       if (isUpdated) await user.save();
+//       if (isUpdated) {
+//         await user.save();
+//       }
+
+//       // 🔥 CHECK IF USER HAS SUBSCRIPTION
+//       const existingSub = await Subscription.findOne({ user: user._id });
+
+//       if (!existingSub) {
+//         const today = new Date();
+//         const tenDaysLater = new Date();
+//         tenDaysLater.setDate(today.getDate() + 10);
+
+//         await Subscription.create({
+//           user: user._id,
+//           plan: null,
+//           paymentId: null,
+//           orderId: null,
+//           status: 'active',
+//           startDate: today,
+//           endDate: tenDaysLater,
+//         });
+
+//         console.log('🎁 Free subscription added for existing user');
+//       }
+
 //       console.log('🏠 Existing User Logged In');
 //     }
-//     // 🔐 Subscription / Trial Check
-//     // if (!(await enforceSubscription(user._id, res))) return;
+//     // ===================================
+//     // ACCOUNT STATUS CHECK
+//     // ===================================
 
-//     // JWT Token generation (Backend specific)
+//     if (user.status !== 'active') {
+//       return res.status(403).json({
+//         message: 'Account is blocked or inactive',
+//       });
+//     }
+
+//     // ===================================
+//     // GENERATE TOKENS
+//     // ===================================
+
 //     const { accessToken, refreshToken } = generateToken(user._id);
 
 //     user.refreshToken = refreshToken;
 //     await user.save();
 
 //     const safeUser = user.toObject();
-//     delete safeUser.password; // Password agar ho toh security ke liye delete karein
+
+//     delete safeUser.password;
 //     delete safeUser.refreshToken;
 
 //     return res.status(200).json({
@@ -238,6 +209,7 @@ const updateUserChapterProgress = async (userId, chapterId) => {
 //     });
 //   } catch (err) {
 //     console.error('🔥 Global Google Login Error:', err);
+
 //     return res.status(500).json({
 //       message: 'Internal Server Error during Google Login',
 //       error_detail: err.message,
@@ -245,33 +217,29 @@ const updateUserChapterProgress = async (userId, chapterId) => {
 //   }
 // };
 
-export const loginByGoogle = async (req, res, next) => {
-  console.log('Server time before verify:', new Date().toISOString());
-
+export const loginByGoogle = async (req, res) => {
   try {
     const { token } = req.body;
 
     if (!token) {
-      return res.status(400).json({ message: 'Google ID token is required' });
+      return res.status(400).json({
+        success: false,
+        message: 'Google ID token is required',
+      });
     }
+
+    // ============================
+    // VERIFY FIREBASE TOKEN
+    // ============================
 
     let decodedToken;
 
     try {
-      const currentProjectId = admin.app().options.projectId;
-      console.log('🔍 Verifying token for project:', currentProjectId);
-
       decodedToken = await admin.auth().verifyIdToken(token);
-
-      console.log('✅ Token VERIFIED successfully!');
-      console.log('Decoded UID:', decodedToken.uid);
-      console.log('Decoded email:', decodedToken.email);
-    } catch (err) {
-      console.error('❌ VERIFY ERROR:', err);
-
+    } catch (error) {
       return res.status(401).json({
-        message: 'Invalid or Expired Firebase Token',
-        error_detail: err.message,
+        success: false,
+        message: 'Invalid or expired Google token',
       });
     }
 
@@ -282,19 +250,20 @@ export const loginByGoogle = async (req, res, next) => {
 
     if (!email) {
       return res.status(400).json({
-        message: 'Invalid Google token payload: Email missing',
+        success: false,
+        message: 'Google email not found',
       });
     }
 
-    // ===================================
-    // CHECK USER
-    // ===================================
+    // ============================
+    // FIND USER
+    // ============================
 
     let user = await UserModel.findOne({ email });
 
-    // ===================================
+    // ============================
     // CREATE USER IF NOT EXISTS
-    // ===================================
+    // ============================
 
     if (!user) {
       user = await UserModel.create({
@@ -305,82 +274,77 @@ export const loginByGoogle = async (req, res, next) => {
         signUpBy: 'google',
         isEmailVerified: true,
         role: 'user',
-        // trialExpiry: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-        // isTrialExpired: false,
       });
 
-      console.log('🆕 New User Created via Google Sign-In');
+      // ============================
+      // CREATE 10 DAY FREE SUBSCRIPTION
+      // ============================
 
-      // ===================================
-      // 🎁 CREATE 10 DAYS FREE SUBSCRIPTION
-      // ===================================
-
-      const today = new Date();
-      const tenDaysLater = new Date();
-      tenDaysLater.setDate(today.getDate() + 10);
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(startDate.getDate() + 10);
 
       await Subscription.create({
         user: user._id,
-        plan: null,
-        paymentId: null,
-        orderId: null,
         status: 'active',
-        startDate: today,
-        endDate: tenDaysLater,
+        startDate,
+        endDate,
       });
     } else {
-      let isUpdated = false;
+      let updated = false;
 
       if (!user.googleId) {
         user.googleId = googleId;
-        isUpdated = true;
+        updated = true;
       }
 
       if (!user.profileImage && picture) {
         user.profileImage = picture;
-        isUpdated = true;
+        updated = true;
       }
 
-      if (isUpdated) {
+      if (updated) {
         await user.save();
       }
 
-      // 🔥 CHECK IF USER HAS SUBSCRIPTION
-      const existingSub = await Subscription.findOne({ user: user._id });
+      // ============================
+      // CHECK IF SUBSCRIPTION EXISTS
+      // ============================
+
+      const existingSub = await Subscription.findOne({
+        user: user._id,
+        status: 'active',
+        endDate: { $gte: new Date() },
+      });
 
       if (!existingSub) {
-        const today = new Date();
-        const tenDaysLater = new Date();
-        tenDaysLater.setDate(today.getDate() + 10);
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setDate(startDate.getDate() + 10);
 
         await Subscription.create({
           user: user._id,
-          plan: null,
-          paymentId: null,
-          orderId: null,
           status: 'active',
-          startDate: today,
-          endDate: tenDaysLater,
+          startDate,
+          endDate,
         });
-
-        console.log('🎁 Free subscription added for existing user');
       }
-
-      console.log('🏠 Existing User Logged In');
     }
-    // ===================================
-    // ACCOUNT STATUS CHECK
-    // ===================================
+
+    // ============================
+    // CHECK USER STATUS
+    // ============================
 
     if (user.status !== 'active') {
       return res.status(403).json({
-        message: 'Account is blocked or inactive',
+        success: false,
+        message: 'Account is blocked',
       });
     }
 
-    // ===================================
+    // ============================
     // GENERATE TOKENS
-    // ===================================
+    // ============================
 
     const { accessToken, refreshToken } = generateToken(user._id);
 
@@ -394,16 +358,17 @@ export const loginByGoogle = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
+      message: 'Google login successful',
       accessToken,
       refreshToken,
       user: safeUser,
     });
-  } catch (err) {
-    console.error('🔥 Global Google Login Error:', err);
+  } catch (error) {
+    console.error('Google Login Error:', error);
 
     return res.status(500).json({
-      message: 'Internal Server Error during Google Login',
-      error_detail: err.message,
+      success: false,
+      message: 'Internal server error',
     });
   }
 };
