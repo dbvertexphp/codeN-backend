@@ -219,9 +219,15 @@ const updateUserChapterProgress = async (userId, chapterId) => {
 
 export const loginByGoogle = async (req, res) => {
   try {
+
+    console.log("======= GOOGLE LOGIN REQUEST =======");
+    console.log("Request Body:", req.body);
+    console.log("====================================");
+
     const { token } = req.body;
 
     if (!token) {
+      console.log("❌ Token missing");
       return res.status(400).json({
         success: false,
         message: 'Google ID token is required',
@@ -236,7 +242,14 @@ export const loginByGoogle = async (req, res) => {
 
     try {
       decodedToken = await admin.auth().verifyIdToken(token);
+
+      console.log("======= FIREBASE DECODED TOKEN =======");
+      console.log(decodedToken);
+      console.log("=======================================");
+
     } catch (error) {
+      console.log("❌ Firebase token verification failed:", error.message);
+
       return res.status(401).json({
         success: false,
         message: 'Invalid or expired Google token',
@@ -248,7 +261,16 @@ export const loginByGoogle = async (req, res) => {
     const name = decodedToken.name || 'Google User';
     const picture = decodedToken.picture || null;
 
+    console.log("Google User Data:", {
+      email,
+      googleId,
+      name,
+      picture
+    });
+
     if (!email) {
+      console.log("❌ Email missing in token");
+
       return res.status(400).json({
         success: false,
         message: 'Google email not found',
@@ -261,11 +283,16 @@ export const loginByGoogle = async (req, res) => {
 
     let user = await UserModel.findOne({ email });
 
+    console.log("User Found:", user ? "YES" : "NO");
+
     // ============================
     // CREATE USER IF NOT EXISTS
     // ============================
 
     if (!user) {
+
+      console.log("🆕 Creating new Google user");
+
       user = await UserModel.create({
         name,
         email,
@@ -275,10 +302,6 @@ export const loginByGoogle = async (req, res) => {
         isEmailVerified: true,
         role: 'user',
       });
-
-      // ============================
-      // CREATE 10 DAY FREE SUBSCRIPTION
-      // ============================
 
       const startDate = new Date();
       const endDate = new Date();
@@ -290,7 +313,13 @@ export const loginByGoogle = async (req, res) => {
         startDate,
         endDate,
       });
+
+      console.log("🎁 10 Day Free Subscription Created");
+
     } else {
+
+      console.log("👤 Existing user login");
+
       let updated = false;
 
       if (!user.googleId) {
@@ -305,11 +334,8 @@ export const loginByGoogle = async (req, res) => {
 
       if (updated) {
         await user.save();
+        console.log("User updated with Google info");
       }
-
-      // ============================
-      // CHECK IF SUBSCRIPTION EXISTS
-      // ============================
 
       const existingSub = await Subscription.findOne({
         user: user._id,
@@ -317,7 +343,10 @@ export const loginByGoogle = async (req, res) => {
         endDate: { $gte: new Date() },
       });
 
+      console.log("Existing Active Subscription:", existingSub ? "YES" : "NO");
+
       if (!existingSub) {
+
         const startDate = new Date();
         const endDate = new Date();
         endDate.setDate(startDate.getDate() + 10);
@@ -328,6 +357,8 @@ export const loginByGoogle = async (req, res) => {
           startDate,
           endDate,
         });
+
+        console.log("🎁 Free subscription added for existing user");
       }
     }
 
@@ -336,6 +367,8 @@ export const loginByGoogle = async (req, res) => {
     // ============================
 
     if (user.status !== 'active') {
+      console.log("❌ User account blocked");
+
       return res.status(403).json({
         success: false,
         message: 'Account is blocked',
@@ -351,10 +384,49 @@ export const loginByGoogle = async (req, res) => {
     user.refreshToken = refreshToken;
     await user.save();
 
+    console.log("🔑 Tokens generated");
+
     const safeUser = user.toObject();
 
     delete safeUser.password;
     delete safeUser.refreshToken;
+
+    // ============================
+    // GET ACTIVE SUBSCRIPTION
+    // ============================
+
+    const activeSubscription = await Subscription.findOne({
+      user: user._id,
+      status: 'active',
+    }).sort({ endDate: -1 });
+
+    console.log("Active Subscription:", activeSubscription);
+
+    let subscriptionExpired = true;
+    let daysRemaining = 0;
+
+    if (activeSubscription) {
+      const now = new Date();
+      const end = new Date(activeSubscription.endDate);
+
+      if (end > now) {
+        subscriptionExpired = false;
+
+        const diffTime = end - now;
+        daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+    }
+
+    const hasActiveSubscription = !!activeSubscription && !subscriptionExpired;
+
+    console.log("======= GOOGLE LOGIN RESPONSE =======");
+    console.log({
+      success: true,
+      activesubscription: hasActiveSubscription,
+      subscriptionExpired,
+      daysRemaining
+    });
+    console.log("=====================================");
 
     return res.status(200).json({
       success: true,
@@ -362,9 +434,17 @@ export const loginByGoogle = async (req, res) => {
       accessToken,
       refreshToken,
       user: safeUser,
+
+      activesubscription: hasActiveSubscription,
+      activeSubscription: activeSubscription || null,
+      subscriptionExpired,
+      daysRemaining,
     });
+
   } catch (error) {
-    console.error('Google Login Error:', error);
+
+    console.log("🔥 GOOGLE LOGIN ERROR");
+    console.log(error);
 
     return res.status(500).json({
       success: false,
