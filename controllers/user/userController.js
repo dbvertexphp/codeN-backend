@@ -245,7 +245,6 @@ const updateUserChapterProgress = async (userId, chapterId) => {
 //   }
 // };
 
-
 export const loginByGoogle = async (req, res, next) => {
   console.log('Server time before verify:', new Date().toISOString());
 
@@ -306,8 +305,8 @@ export const loginByGoogle = async (req, res, next) => {
         signUpBy: 'google',
         isEmailVerified: true,
         role: 'user',
-        trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-        isTrialExpired: false,
+        // trialExpiry: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+        // isTrialExpired: false,
       });
 
       console.log('🆕 New User Created via Google Sign-In');
@@ -330,10 +329,6 @@ export const loginByGoogle = async (req, res, next) => {
         endDate: tenDaysLater,
       });
     } else {
-      // ===================================
-      // EXISTING USER UPDATE
-      // ===================================
-
       let isUpdated = false;
 
       if (!user.googleId) {
@@ -350,9 +345,29 @@ export const loginByGoogle = async (req, res, next) => {
         await user.save();
       }
 
+      // 🔥 CHECK IF USER HAS SUBSCRIPTION
+      const existingSub = await Subscription.findOne({ user: user._id });
+
+      if (!existingSub) {
+        const today = new Date();
+        const tenDaysLater = new Date();
+        tenDaysLater.setDate(today.getDate() + 10);
+
+        await Subscription.create({
+          user: user._id,
+          plan: null,
+          paymentId: null,
+          orderId: null,
+          status: 'active',
+          startDate: today,
+          endDate: tenDaysLater,
+        });
+
+        console.log('🎁 Free subscription added for existing user');
+      }
+
       console.log('🏠 Existing User Logged In');
     }
-
     // ===================================
     // ACCOUNT STATUS CHECK
     // ===================================
@@ -589,8 +604,8 @@ export const register = async (req, res, next) => {
           admissionYear,
           signUpBy: 'email',
           role: 'user',
-          trialExpiry: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-          isTrialExpired: false,
+          // trialExpiry: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+          // isTrialExpired: false,
         },
       ],
       { session }

@@ -169,16 +169,16 @@ const userSchema = new mongoose.Schema(
       enum: ['free', 'starter', 'professional', 'premium_plus'],
       default: 'free',
     },
-    // ✅ Free Trial Tracking (3 Days)
-    trialExpiry: {
-      type: Date,
-      default: null,
-    },
+    // // ✅ Free Trial Tracking (3 Days)
+    // trialExpiry: {
+    //   type: Date,
+    //   default: null,
+    // },
 
-    isTrialExpired: {
-      type: Boolean,
-      default: false,
-    },
+    // isTrialExpired: {
+    //   type: Boolean,
+    //   default: false,
+    // },
 
     completedChapters: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'Chapter' },
