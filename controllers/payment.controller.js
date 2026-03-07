@@ -1,8 +1,8 @@
-import crypto from "crypto";
-import mongoose from "mongoose";
-import razorpay from "../config/razorpay.js";
-import SubscriptionPlan from "../models/admin/SubscriptionPlan/scriptionplan.model.js";
-import Subscription from "../models/Subscription.js";
+import crypto from 'crypto';
+import mongoose from 'mongoose';
+import razorpay from '../config/razorpay.js';
+import SubscriptionPlan from '../models/admin/SubscriptionPlan/scriptionplan.model.js';
+import Subscription from '../models/Subscription.js';
 
 export const createOrder = async (req, res) => {
   try {
@@ -12,14 +12,14 @@ export const createOrder = async (req, res) => {
     if (!userId) {
       return res.status(400).json({
         success: false,
-        message: "User ID is required",
+        message: 'User ID is required',
       });
     }
 
     if (!planId) {
       return res.status(400).json({
         success: false,
-        message: "Plan ID is required",
+        message: 'Plan ID is required',
       });
     }
 
@@ -29,7 +29,7 @@ export const createOrder = async (req, res) => {
     if (!plan || !plan.isActive) {
       return res.status(404).json({
         success: false,
-        message: "Plan not found or inactive",
+        message: 'Plan not found or inactive',
       });
     }
 
@@ -39,7 +39,7 @@ export const createOrder = async (req, res) => {
     if (!pricing) {
       return res.status(400).json({
         success: false,
-        message: "Pricing not available",
+        message: 'Pricing not available',
       });
     }
 
@@ -48,7 +48,7 @@ export const createOrder = async (req, res) => {
     // 🔹 Create Razorpay Order
     const order = await razorpay.orders.create({
       amount,
-      currency: "INR",
+      currency: 'INR',
       receipt: `receipt_${Date.now()}`,
     });
 
@@ -56,11 +56,10 @@ export const createOrder = async (req, res) => {
     const startDate = new Date();
     let endDate = new Date(startDate);
 
-    if (pricing.durationType === "months") {
-      const monthsToAdd =
-        pricing.totalMonths || pricing.months || 0;
+    if (pricing.durationType === 'months') {
+      const monthsToAdd = pricing.totalMonths || pricing.months || 0;
       endDate.setMonth(endDate.getMonth() + monthsToAdd);
-    } else if (pricing.durationType === "days") {
+    } else if (pricing.durationType === 'days') {
       const daysToAdd = pricing.days || 0;
       endDate.setDate(endDate.getDate() + daysToAdd);
     }
@@ -71,7 +70,7 @@ export const createOrder = async (req, res) => {
       plan: planId,
       orderId: order.id,
       paymentId: null,
-      status: "pending",
+      status: 'pending',
       startDate,
       endDate,
     });
@@ -83,68 +82,65 @@ export const createOrder = async (req, res) => {
       planName: plan.name,
       price: pricing.price,
       duration:
-        pricing.durationType === "months"
+        pricing.durationType === 'months'
           ? `${pricing.totalMonths || pricing.months} Months`
           : `${pricing.days} Days`,
     });
   } catch (error) {
-    console.error("Create Order Error:", error);
+    console.error('Create Order Error:', error);
     return res.status(500).json({
       success: false,
-      message: "Create order failed",
+      message: 'Create order failed',
     });
   }
 };
 
 const verifyPayment = async (req, res) => {
   try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature
-    } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
+      req.body;
 
     const generated_signature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest("hex");
+      .digest('hex');
 
     if (generated_signature !== razorpay_signature) {
       return res.status(400).json({
         success: false,
-        message: "Invalid signature"
+        message: 'Invalid signature',
       });
     }
 
     const subscription = await Subscription.findOne({
-      orderId: razorpay_order_id
-    }).populate("plan");
+      orderId: razorpay_order_id,
+    }).populate('plan');
 
     if (!subscription) {
       return res.status(404).json({
-        message: "Subscription not found"
+        message: 'Subscription not found',
       });
     }
 
     // 🔥 Already active check
-    if (subscription.status === "active") {
+    if (subscription.status === 'active') {
       return res.status(200).json({
         success: true,
-        message: "Subscription already active"
+        message: 'Subscription already active',
       });
     }
 
     subscription.paymentId = razorpay_payment_id;
-    subscription.status = "active";
+    subscription.status = 'active';
     subscription.startDate = new Date();
 
     const pricing = subscription.plan.pricing[0];
     let endDate = new Date();
 
-    if (pricing.durationType === "months") {
+    if (pricing.durationType === 'months') {
       const monthsToAdd = pricing.totalMonths || pricing.months || 1;
       endDate.setMonth(endDate.getMonth() + monthsToAdd);
-    } else if (pricing.durationType === "days") {
+    } else if (pricing.durationType === 'days') {
       const daysToAdd = pricing.days || 1;
       endDate.setDate(endDate.getDate() + daysToAdd);
     }
@@ -155,14 +151,13 @@ const verifyPayment = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Payment verified & subscription activated",
+      message: 'Payment verified & subscription activated',
       startDate: subscription.startDate,
-      endDate: subscription.endDate
+      endDate: subscription.endDate,
     });
-
   } catch (error) {
     console.log(error);
-    res.status(500).json({ message: "Verification failed" });
+    res.status(500).json({ message: 'Verification failed' });
   }
 };
 
