@@ -1468,13 +1468,20 @@ export const getMcqsByTestId = async (req, res) => {
       .populate('tagId', 'name')
       .sort({ createdAt: 1 })
       .lean();
-
+    const formattedMcqs = mcqs.map((m) => ({
+      ...m,
+      question: {
+        mcqId: m._id, // ⚡ MCQ id question object me
+        text: m.question?.text || '',
+        images: m.question?.images || [],
+      },
+    }));
     return res.status(200).json({
       success: true,
       testId: test._id,
       testTitle: test.testTitle,
-      totalQuestions: mcqs.length,
-      data: mcqs,
+      totalQuestions: formattedMcqs.length,
+      data: formattedMcqs,
     });
   } catch (error) {
     console.error('getMcqsByTestId error:', error);
