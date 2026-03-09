@@ -34,6 +34,7 @@ import Payment from './routes/payment.routes.js';
 import faculty from './routes/admin/faculty/faculty.routes.js';
 import promo from './routes/admin/promo/promo.routes.js';
 import Rating from './models/admin/Rating.js';
+import faqRoutes from './routes/admin/FAQ/faq.routes.js';
 import mongoose from 'mongoose';
 // Middleware Imports
 import { errorHandler, notFound } from './middleware/errorMiddleware.js';
@@ -159,7 +160,7 @@ app.use('/api/admin/privacy', PrivacyRoutes);
 app.use('/api/admin/videos', videoRoutes);
 app.use('/api/admin', PaymentList);
 app.use('/api/payment', Payment);
-
+app.use('/api', faqRoutes);
 app.use('/api/faculty', faculty);
 // app.use('/api/promo', promo);
 app.use('/api/admin/promos', promo);
