@@ -269,12 +269,56 @@ export const getAllRatings = async (req, res) => {
 };
 
 // controllers/admin/dashboard.controller.js
+// export const getDashboardStats = async (req, res) => {
+//   const [users, tags, tests, videos, courses, chapters, subjects, payments] =
+//     await Promise.all([
+//       User.countDocuments({ role: 'user' }),
+//       Tag.countDocuments(),
+//       Test.countDocuments(),
+//       Video.countDocuments(),
+//       Course.countDocuments(),
+//       Chapter.countDocuments(),
+//       Subject.countDocuments(),
+//       Payment.countDocuments(),
+//     ]);
+
+//   res.json({
+//     success: true,
+//     data: {
+//       users,
+//       tags,
+//       tests,
+//       videos,
+//       courses,
+//       chapters,
+//       subjects,
+//       payments,
+//     },
+//   });
+// };
+
 export const getDashboardStats = async (req, res) => {
-  const [users, tags, tests, videos, courses, chapters, subjects, payments] =
-    await Promise.all([
+  try {
+    const [
+      users,
+      tags,
+      tests,
+      qtests,
+      videos,
+      courses,
+      chapters,
+      subjects,
+      payments,
+    ] = await Promise.all([
       User.countDocuments({ role: 'user' }),
       Tag.countDocuments(),
-      Test.countDocuments(),
+
+      // 🔥 TEST (exam mode)
+      Test.countDocuments({ testMode: 'exam' }),
+
+      // 🔥 Q-TEST (regular mode)
+      Test.countDocuments({ testMode: 'regular' }),
+
       Video.countDocuments(),
       Course.countDocuments(),
       Chapter.countDocuments(),
@@ -282,17 +326,26 @@ export const getDashboardStats = async (req, res) => {
       Payment.countDocuments(),
     ]);
 
-  res.json({
-    success: true,
-    data: {
-      users,
-      tags,
-      tests,
-      videos,
-      courses,
-      chapters,
-      subjects,
-      payments,
-    },
-  });
+    res.json({
+      success: true,
+      data: {
+        users,
+        tags,
+        tests,
+        qtests,
+        videos,
+        courses,
+        chapters,
+        subjects,
+        payments,
+      },
+    });
+  } catch (error) {
+    console.error('Dashboard Error:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to load dashboard stats',
+    });
+  }
 };
