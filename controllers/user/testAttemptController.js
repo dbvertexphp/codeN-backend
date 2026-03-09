@@ -1223,7 +1223,7 @@ export const submitQTestByChapter = async (req, res) => {
 
     // 3️⃣ Fetch MCQs ONLY of that Q-Test + chapter
     const mcqs = await MCQ.find({
-      testId: qtestId,   // 🔥 DB field still testId hi rahega
+      testId: qtestId, // 🔥 DB field still testId hi rahega
       chapterId,
       status: 'active',
     }).select('_id correctAnswer');
@@ -1241,9 +1241,7 @@ export const submitQTestByChapter = async (req, res) => {
     let notAttempted = 0;
 
     mcqs.forEach((mcq) => {
-      const userAnswer = answers.find(
-        (a) => a.mcqId === mcq._id.toString()
-      );
+      const userAnswer = answers.find((a) => a.mcqId === mcq._id.toString());
 
       if (
         !userAnswer ||
@@ -1266,7 +1264,7 @@ export const submitQTestByChapter = async (req, res) => {
     // 5️⃣ Save Attempt
     await TestAttempt.create({
       userId,
-      testId: qtestId,  // 🔥 DB me field name same rehne do
+      testId: qtestId, // 🔥 DB me field name same rehne do
       chapterId,
       mode: 'regular',
       answers,
@@ -1293,7 +1291,6 @@ export const submitQTestByChapter = async (req, res) => {
     });
   }
 };
-
 
 /**
  * @desc   Get Q-Tests by Chapter (User Side)
@@ -1375,23 +1372,82 @@ export const getQTestsByChapter = async (req, res) => {
   }
 };
 
+// export const getMcqsByTestId = async (req, res) => {
+//   try {
+//     const { testId } = req.params;
+//     const userId = req.user._id;
+
+//     // 🔐 subscription check
+//     if (!(await enforceSubscription(userId, res))) return;
+
+//     // Validate ID
+//     if (!mongoose.Types.ObjectId.isValid(testId)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Invalid test id',
+//       });
+//     }
+
+//     // Check test exists
+//     const test = await Test.findOne({
+//       _id: testId,
+//       status: 'active',
+//     }).lean();
+
+//     if (!test) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Test not found',
+//       });
+//     }
+
+//     // Fetch MCQs
+//     const mcqs = await MCQ.find({
+//       testId: test._id,
+//       status: 'active',
+//     })
+//       .populate('tagId', 'name')
+//       .sort({ createdAt: 1 })
+//       .lean();
+
+//     return res.status(200).json({
+//       success: true,
+//       testId: test._id,
+//       testTitle: test.testTitle,
+//       totalQuestions: mcqs.length,
+//       data: mcqs,
+//     });
+//   } catch (error) {
+//     console.error('getMcqsByTestId error:', error);
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch MCQs',
+//     });
+//   }
+// };
+
 export const getMcqsByTestId = async (req, res) => {
   try {
-    const { testId } = req.params;
+    let { testId } = req.params; // ⚡ let use karo
     const userId = req.user._id;
 
-    // 🔐 subscription check
     if (!(await enforceSubscription(userId, res))) return;
 
-    // Validate ID
     if (!mongoose.Types.ObjectId.isValid(testId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid test id',
+        message: 'Invalid id',
       });
     }
 
-    // Check test exists
+    // 🔎 Check if given id is MCQ id
+    const mcq = await MCQ.findById(testId).lean();
+
+    if (mcq) {
+      testId = Array.isArray(mcq.testId) ? mcq.testId[0] : mcq.testId;
+    }
+
+    // Find Test
     const test = await Test.findOne({
       _id: testId,
       status: 'active',
@@ -1404,9 +1460,9 @@ export const getMcqsByTestId = async (req, res) => {
       });
     }
 
-    // Fetch MCQs
+    // Fetch all MCQs
     const mcqs = await MCQ.find({
-      testId: test._id,
+      testId: { $in: [testId] }, // ⚡ important
       status: 'active',
     })
       .populate('tagId', 'name')

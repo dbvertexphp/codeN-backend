@@ -42,6 +42,7 @@ import {
   getTestReview,
   getQTestsByChapter,
   getMcqsByTestId,
+  
 } from '../../controllers/user/testAttemptController.js';
 import { protect } from '../../middleware/authMiddleware.js';
 
@@ -74,5 +75,6 @@ router.post('/attempt/:attemptId/submit', protect, submitTest);
 router.post('/submit-Qtest', protect, submitQTestByChapter);
 router.get('/qtest/:chapterId', protect, getQTestsByChapter);
 router.get('/qtest/:testId/mcqs', protect, getMcqsByTestId);
+router.get('/qtest/:id/mcqs', protect, getMcqsByTestId);
 
 export default router;
