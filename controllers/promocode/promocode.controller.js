@@ -1,4 +1,4 @@
-import PromoCode from '../../../models/admin/promo/promo.model.js';
+import PromoCode from '../../models/admin/promo/promo.model.js ';
 
 // CREATE PROMO
 export const createPromoCode = async (req, res) => {
@@ -78,7 +78,7 @@ export const getPromoById = async (req, res) => {
     if (!promo) {
       return res.status(404).json({
         success: false,
-        message: "Promo code not found",
+        message: 'Promo code not found',
       });
     }
 
@@ -93,7 +93,6 @@ export const getPromoById = async (req, res) => {
     });
   }
 };
-
 
 // UPDATE PROMO
 export const updatePromo = async (req, res) => {
@@ -115,7 +114,7 @@ export const updatePromo = async (req, res) => {
     if (!promo) {
       return res.status(404).json({
         success: false,
-        message: "Promo code not found",
+        message: 'Promo code not found',
       });
     }
 
@@ -133,7 +132,7 @@ export const updatePromo = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Promo updated successfully",
+      message: 'Promo updated successfully',
       data: updatedPromo,
     });
   } catch (error) {
@@ -143,7 +142,6 @@ export const updatePromo = async (req, res) => {
     });
   }
 };
-
 
 // DELETE PROMO
 export const deletePromo = async (req, res) => {

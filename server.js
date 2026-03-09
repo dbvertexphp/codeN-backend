@@ -162,8 +162,8 @@ app.use('/api/admin', PaymentList);
 app.use('/api/payment', Payment);
 app.use('/api', faqRoutes);
 app.use('/api/faculty', faculty);
-// app.use('/api/promo', promo);
-app.use('/api/admin/promos', promo);
+app.use('/api/promo', promo);
+// app.use('/api/admin/promos', promo);
 // Shared/Other Routes
 app.use('/api/location', locationRoutes);
 // app.use('/api/bookmarks', bookmarkRoutes);
