@@ -3354,6 +3354,57 @@ export const addBookmark = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// export const addBookmark = async (req, res) => {
+//   try {
+//     const { type, mcqId, chapterId, subSubjectId, topicId, category } =
+//       req.body;
+
+//     // 1. Basic Validation
+//     if (!type || !category) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'type and category are required',
+//       });
+//     }
+
+//     const bookmarkData = {
+//       userId: req.user._id,
+//       type,
+//       category,
+//       itemId:
+//         type === 'mcq'
+//           ? mcqId
+//           : type === 'chapter'
+//             ? chapterId
+//             : type === 'topic'
+//               ? topicId
+//               : type === 'sub-subject'
+//                 ? subSubjectId
+//                 : null,
+//     };
+
+//     // 3. Create Bookmark
+//     const bookmark = await Bookmark.create(bookmarkData);
+
+//     res.status(201).json({
+//       success: true,
+//       message: `Bookmark added to ${category}`,
+//       bookmark,
+//     });
+//   } catch (error) {
+//     // Duplicate Key Error (Unique Index ki wajah se)
+//     if (error.code === 11000) {
+//       return res.status(409).json({
+//         success: false,
+//         message: 'Already bookmarked in this category',
+//       });
+//     }
+
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
 /**
  * @route   DELETE /api/bookmarks
  */
@@ -3379,6 +3430,63 @@ export const removeBookmark = async (req, res) => {
 /**
  * @route   GET /api/bookmarks
  */
+
+// export const getMyBookmarks = async (req, res) => {
+//   try {
+//     const bookmarks = await Bookmark.find({
+//       userId: req.user._id,
+//     })
+//       .sort({ createdAt: -1 })
+//       .lean();
+
+//     const populatedBookmarks = await Promise.all(
+//       bookmarks.map(async (bookmark) => {
+//         let itemData = null;
+
+//         if (bookmark.type === 'mcq') {
+//           itemData = await MCQ.findById(bookmark.itemId)
+//             .select('question options difficulty')
+//             .lean();
+//         }
+
+//         if (bookmark.type === 'chapter') {
+//           itemData = await Chapter.findById(bookmark.itemId)
+//             .select('name description image')
+//             .lean();
+//         }
+
+//         if (bookmark.type === 'topic') {
+//           itemData = await Topic.findById(bookmark.itemId)
+//             .select('name description')
+//             .lean();
+//         }
+
+//         if (bookmark.type === 'sub-subject') {
+//           itemData = await SubSubject.findById(bookmark.itemId)
+//             .select('name image')
+//             .lean();
+//         }
+
+//         return {
+//           ...bookmark,
+//           itemData,
+//         };
+//       })
+//     );
+
+//     res.status(200).json({
+//       success: true,
+//       count: populatedBookmarks.length,
+//       data: populatedBookmarks,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
 export const getMyBookmarks = async (req, res) => {
   try {
     const bookmarks = await Bookmark.find({
@@ -3389,35 +3497,66 @@ export const getMyBookmarks = async (req, res) => {
 
     const populatedBookmarks = await Promise.all(
       bookmarks.map(async (bookmark) => {
-        let itemData = null;
+        let rawData = null;
+        let formattedItem = null;
 
         if (bookmark.type === 'mcq') {
-          itemData = await MCQ.findById(bookmark.itemId)
+          rawData = await MCQ.findById(bookmark.itemId)
             .select('question options difficulty')
             .lean();
-        }
 
-        if (bookmark.type === 'chapter') {
-          itemData = await Chapter.findById(bookmark.itemId)
+          if (rawData) {
+            // Yahan hum question object ko khatam kar rahe hain
+            formattedItem = {
+              _id: rawData._id,
+              name: rawData.question?.text || '', // text ab 'name' hai
+              images: rawData.question?.images || [], // images ab bahar hain
+              options: rawData.options || [],
+              difficulty: rawData.difficulty,
+            };
+          }
+        } else if (bookmark.type === 'chapter') {
+          rawData = await Chapter.findById(bookmark.itemId)
             .select('name description image')
             .lean();
-        }
 
-        if (bookmark.type === 'topic') {
-          itemData = await Topic.findById(bookmark.itemId)
+          if (rawData) {
+            formattedItem = {
+              _id: rawData._id,
+              name: rawData.name,
+              description: rawData.description,
+              image: rawData.image || null,
+            };
+          }
+        } else if (bookmark.type === 'topic') {
+          rawData = await Topic.findById(bookmark.itemId)
             .select('name description')
             .lean();
-        }
 
-        if (bookmark.type === 'sub-subject') {
-          itemData = await SubSubject.findById(bookmark.itemId)
+          if (rawData) {
+            formattedItem = {
+              _id: rawData._id,
+              name: rawData.name,
+              description: rawData.description,
+            };
+          }
+        } else if (bookmark.type === 'sub-subject') {
+          rawData = await SubSubject.findById(bookmark.itemId)
             .select('name image')
             .lean();
+
+          if (rawData) {
+            formattedItem = {
+              _id: rawData._id,
+              name: rawData.name,
+              image: rawData.image || null,
+            };
+          }
         }
 
         return {
           ...bookmark,
-          itemData,
+          itemData: formattedItem, // Ab MCQ aur Chapter dono mein 'name' common hai
         };
       })
     );
