@@ -4,10 +4,102 @@ import razorpay from '../config/razorpay.js';
 import SubscriptionPlan from '../models/admin/SubscriptionPlan/scriptionplan.model.js';
 import Subscription from '../models/Subscription.js';
 import UserModel from '../models/user/userModel.js';
+import PromoCode from '../models/admin/promo/promo.model.js';
+//working krishna
+// export const createOrder = async (req, res) => {
+//   try {
+//     const { planId, userId } = req.body;
+
+//     // 🔹 Validate Inputs
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'User ID is required',
+//       });
+//     }
+
+//     if (!planId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Plan ID is required',
+//       });
+//     }
+
+//     // 🔹 Find Plan
+//     const plan = await SubscriptionPlan.findById(planId);
+
+//     if (!plan || !plan.isActive) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Plan not found or inactive',
+//       });
+//     }
+
+//     // 🔥 Get First Pricing Object
+//     const pricing = plan.pricing[0];
+
+//     if (!pricing) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Pricing not available',
+//       });
+//     }
+
+//     const amount = pricing.price * 100; // convert to paisa
+
+//     // 🔹 Create Razorpay Order
+//     const order = await razorpay.orders.create({
+//       amount,
+//       currency: 'INR',
+//       receipt: `receipt_${Date.now()}`,
+//     });
+
+//     // 🔥 Calculate Start & End Date
+//     const startDate = new Date();
+//     let endDate = new Date(startDate);
+
+//     if (pricing.durationType === 'months') {
+//       const monthsToAdd = pricing.totalMonths || pricing.months || 0;
+//       endDate.setMonth(endDate.getMonth() + monthsToAdd);
+//     } else if (pricing.durationType === 'days') {
+//       const daysToAdd = pricing.days || 0;
+//       endDate.setDate(endDate.getDate() + daysToAdd);
+//     }
+
+//     // 🔹 Create Subscription Entry
+//     await Subscription.create({
+//       user: userId,
+//       plan: planId,
+//       orderId: order.id,
+//       paymentId: null,
+//       status: 'pending',
+//       startDate,
+//       endDate,
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       orderId: order.id,
+//       amount,
+//       planName: plan.name,
+//       price: pricing.price,
+//       duration:
+//         pricing.durationType === 'months'
+//           ? `${pricing.totalMonths || pricing.months} Months`
+//           : `${pricing.days} Days`,
+//     });
+//   } catch (error) {
+//     console.error('Create Order Error:', error);
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Create order failed',
+//     });
+//   }
+// };
 
 export const createOrder = async (req, res) => {
   try {
-    const { planId, userId } = req.body;
+    const { planId, userId, promoCode } = req.body;
 
     // 🔹 Validate Inputs
     if (!userId) {
@@ -44,7 +136,61 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    const amount = pricing.price * 100; // convert to paisa
+    let finalPrice = pricing.price;
+
+    if (promoCode) {
+      const promo = await PromoCode.findOne({ code: promoCode.toUpperCase() });
+
+      if (!promo || !promo.isActive) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid promo code',
+        });
+      }
+
+      // Expiry Check
+      if (promo.expiryDate < new Date()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Promo code expired',
+        });
+      }
+
+      // Usage Limit Check
+      if (promo.usedCount >= promo.usageLimit) {
+        return res.status(400).json({
+          success: false,
+          message: 'Promo code usage limit reached',
+        });
+      }
+
+      // Minimum Purchase Check
+      if (pricing.price < promo.minPurchase) {
+        return res.status(400).json({
+          success: false,
+          message: `Minimum purchase should be ₹${promo.minPurchase}`,
+        });
+      }
+
+      // Discount Calculation
+      if (promo.discountType === 'percentage') {
+        let discount = (pricing.price * promo.discountValue) / 100;
+
+        if (promo.maxDiscount && discount > promo.maxDiscount) {
+          discount = promo.maxDiscount;
+        }
+
+        finalPrice = pricing.price - discount;
+      }
+
+      if (promo.discountType === 'fixed') {
+        finalPrice = pricing.price - promo.discountValue;
+      }
+
+      if (finalPrice < 0) finalPrice = 0;
+    }
+
+    const amount = finalPrice * 100; // convert to paisa
 
     // 🔹 Create Razorpay Order
     const order = await razorpay.orders.create({
@@ -64,7 +210,10 @@ export const createOrder = async (req, res) => {
       const daysToAdd = pricing.days || 0;
       endDate.setDate(endDate.getDate() + daysToAdd);
     }
-
+    console.log('PromoCode:', promoCode);
+    console.log('Original Price:', pricing.price);
+    console.log('Final Price:', finalPrice);
+    console.log('Razorpay Amount:', amount);
     // 🔹 Create Subscription Entry
     await Subscription.create({
       user: userId,
@@ -74,14 +223,17 @@ export const createOrder = async (req, res) => {
       status: 'pending',
       startDate,
       endDate,
+      promoCode: promoCode || null,
     });
-
     return res.status(200).json({
       success: true,
       orderId: order.id,
-      amount,
       planName: plan.name,
-      price: pricing.price,
+      originalPrice: pricing.price,
+      discountedPrice: finalPrice,
+      discount: pricing.price - finalPrice,
+      amount: amount, // Razorpay paisa (same variable)
+      actualAmount: amount / 100, // 👈 rupees me
       duration:
         pricing.durationType === 'months'
           ? `${pricing.totalMonths || pricing.months} Months`

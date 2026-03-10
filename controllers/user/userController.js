@@ -2780,11 +2780,192 @@ export const updateVideoProgress = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+//krishna
+// export const getCustomPracticeMCQs = async (req, res, next) => {
+//   try {
+//     const {
+//       subjectIds = ['all'],
+//       tagIds = ['all'],
+//       difficulty = 'all',
+//       mode = 'regular',
+//       discard = false,
+//     } = req.body;
+
+//     const userId = req.user._id;
+
+//     const testMode = mode?.toLowerCase() === 'exam' ? 'exam' : 'regular';
+
+//     // ====================================================
+//     // 🔥 EXISTING ATTEMPT CHECK
+//     // ====================================================
+
+//     let existingAttempt = await CustomTestAttempt.findOne({ userId }).populate(
+//       'mcqIds'
+//     );
+
+//     if (existingAttempt) {
+//       const filtersChanged = existingAttempt.mode !== testMode;
+
+//       if (discard || filtersChanged) {
+//         await CustomTestAttempt.deleteOne({ _id: existingAttempt._id });
+//         existingAttempt = null;
+//       }
+//     }
+
+//     if (existingAttempt && existingAttempt.status === 'in_progress') {
+//       return res.status(200).json({
+//         success: true,
+//         message: 'Resuming existing test',
+//         attemptId: existingAttempt._id,
+//         isResume: true,
+//         requestedMode: existingAttempt.mode,
+//         isTimerRequired: existingAttempt.mode === 'exam',
+//         timerMinutes: existingAttempt.mode === 'exam' ? 20 : 0,
+//         count: existingAttempt.mcqIds.length,
+//         totalAvailableMCQ: existingAttempt.mcqIds.length,
+//         data: existingAttempt.mcqIds,
+//       });
+//     }
+
+//     // ====================================================
+//     // 🔥 SUBJECT → CHAPTER RESOLUTION
+//     // ====================================================
+
+//     let chapterIds = [];
+
+//     if (subjectIds.includes('all')) {
+//       const chapters = await Chapter.find({ status: 'active' }).select('_id');
+//       chapterIds = chapters.map((c) => c._id);
+//     } else {
+//       const validSubjectIds = subjectIds.map(
+//         (id) => new mongoose.Types.ObjectId(id)
+//       );
+
+//       const subSubjects = await SubSubject.find({
+//         subjectId: { $in: validSubjectIds },
+//         status: 'active',
+//       }).select('_id');
+
+//       const subSubjectIds = subSubjects.map((s) => s._id);
+
+//       const chapters = await Chapter.find({
+//         subSubjectId: { $in: subSubjectIds },
+//         status: 'active',
+//       }).select('_id');
+
+//       chapterIds = chapters.map((c) => c._id);
+//     }
+
+//     if (!chapterIds.length) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'No chapters found for selected subjects',
+//       });
+//     }
+
+//     // ====================================================
+//     // 🔥 BUILD MCQ FILTER
+//     // ====================================================
+
+//     const filter = {
+//       status: 'active',
+//       chapterId: { $in: chapterIds },
+//       testMode: testMode,
+//     };
+
+//     if (difficulty !== 'all') {
+//       filter.difficulty = difficulty.toLowerCase();
+//     }
+
+//     if (!tagIds.includes('all')) {
+//       const validTagIds = tagIds.map((id) => new mongoose.Types.ObjectId(id));
+//       filter.tagId = { $in: validTagIds };
+//     }
+
+//     // ====================================================
+//     // 🏆 CHECK IF SUBJECT HAS MCQs
+//     // ====================================================
+
+//     const totalAvailableMCQ = await MCQ.countDocuments(filter);
+
+//     if (!totalAvailableMCQ) {
+//       return res.status(404).json({
+//         success: false,
+//         message:
+//           'No MCQs available for selected subject/tags/difficulty/mode. Please change filters.',
+//       });
+//     }
+
+//     // ====================================================
+//     // 🔥 FETCH RANDOM MCQs
+//     // ====================================================
+
+//     const sampleSize = Math.min(20, totalAvailableMCQ);
+
+//     const mcqs = await MCQ.aggregate([
+//       { $match: filter },
+//       { $sample: { size: sampleSize } },
+
+//       {
+//         $lookup: {
+//           from: 'tags',
+//           localField: 'tagId',
+//           foreignField: '_id',
+//           as: 'tagDetails',
+//         },
+//       },
+
+//       {
+//         $project: {
+//           question: 1,
+//           options: 1,
+//           correctAnswer: 1,
+//           explanation: 1,
+//           difficulty: 1,
+//           marks: 1,
+//           negativeMarks: 1,
+//           testMode: 1,
+//           tag: { $arrayElemAt: ['$tagDetails', 0] },
+//         },
+//       },
+//     ]);
+
+//     // ====================================================
+//     // 🔥 CREATE ATTEMPT
+//     // ====================================================
+
+//     const attempt = await CustomTestAttempt.create({
+//       userId,
+//       mcqIds: mcqs.map((m) => m._id),
+//       mode: testMode,
+//       status: 'in_progress',
+//       startedAt: new Date(),
+//     });
+
+//     const isExamMode = testMode === 'exam';
+
+//     return res.status(200).json({
+//       success: true,
+//       attemptId: attempt._id,
+//       isResume: false,
+//       count: mcqs.length,
+//       totalAvailableMCQ,
+//       requestedMode: testMode,
+//       isTimerRequired: isExamMode,
+//       timerMinutes: isExamMode ? 20 : 0,
+//       data: mcqs,
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 export const getCustomPracticeMCQs = async (req, res, next) => {
   try {
     const {
       subjectIds = ['all'],
+      subSubjectIds = ['all'], // 👈 new
+      chapterIds = ['all'], // 👈 new
       tagIds = ['all'],
       difficulty = 'all',
       mode = 'regular',
@@ -2828,15 +3009,32 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
     }
 
     // ====================================================
-    // 🔥 SUBJECT → CHAPTER RESOLUTION
+    // 🔥 SUBJECT / SUBSUBJECT / CHAPTER RESOLUTION
     // ====================================================
 
-    let chapterIds = [];
+    let finalChapterIds = [];
 
-    if (subjectIds.includes('all')) {
-      const chapters = await Chapter.find({ status: 'active' }).select('_id');
-      chapterIds = chapters.map((c) => c._id);
-    } else {
+    // Direct chapter filter
+    if (!chapterIds.includes('all')) {
+      finalChapterIds = chapterIds.map((id) => new mongoose.Types.ObjectId(id));
+    }
+
+    // SubSubject filter
+    else if (!subSubjectIds.includes('all')) {
+      const validSubSubjectIds = subSubjectIds.map(
+        (id) => new mongoose.Types.ObjectId(id)
+      );
+
+      const chapters = await Chapter.find({
+        subSubjectId: { $in: validSubSubjectIds },
+        status: 'active',
+      }).select('_id');
+
+      finalChapterIds = chapters.map((c) => c._id);
+    }
+
+    // Subject filter (existing logic)
+    else if (!subjectIds.includes('all')) {
       const validSubjectIds = subjectIds.map(
         (id) => new mongoose.Types.ObjectId(id)
       );
@@ -2846,20 +3044,26 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
         status: 'active',
       }).select('_id');
 
-      const subSubjectIds = subSubjects.map((s) => s._id);
+      const subIds = subSubjects.map((s) => s._id);
 
       const chapters = await Chapter.find({
-        subSubjectId: { $in: subSubjectIds },
+        subSubjectId: { $in: subIds },
         status: 'active',
       }).select('_id');
 
-      chapterIds = chapters.map((c) => c._id);
+      finalChapterIds = chapters.map((c) => c._id);
     }
 
-    if (!chapterIds.length) {
+    // All subjects
+    else {
+      const chapters = await Chapter.find({ status: 'active' }).select('_id');
+      finalChapterIds = chapters.map((c) => c._id);
+    }
+
+    if (!finalChapterIds.length) {
       return res.status(404).json({
         success: false,
-        message: 'No chapters found for selected subjects',
+        message: 'No chapters found for selected filters',
       });
     }
 
@@ -2869,7 +3073,7 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
 
     const filter = {
       status: 'active',
-      chapterId: { $in: chapterIds },
+      chapterId: { $in: finalChapterIds },
       testMode: testMode,
     };
 
@@ -2883,7 +3087,7 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
     }
 
     // ====================================================
-    // 🏆 CHECK IF SUBJECT HAS MCQs
+    // 🏆 CHECK IF MCQs EXIST
     // ====================================================
 
     const totalAvailableMCQ = await MCQ.countDocuments(filter);
@@ -2959,7 +3163,6 @@ export const getCustomPracticeMCQs = async (req, res, next) => {
     next(error);
   }
 };
-
 export const resumeCustomTest = async (req, res) => {
   try {
     const { attemptId } = req.params;
@@ -3911,4 +4114,4 @@ export const applyPromoCode = async (req, res) => {
       error: error.message,
     });
   }
-};
+};  
