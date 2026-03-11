@@ -34,3 +34,7 @@ build/
 config/firebase-service-account
 config/firebase-service-account.json
 firebase-service-account.json
+
+
+# test payment
+razorpay-test.html
