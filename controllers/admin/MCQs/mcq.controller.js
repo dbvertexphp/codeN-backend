@@ -230,16 +230,27 @@ export const createMCQ = async (req, res, next) => {
         throw new Error('Chapter not found for ID generation');
       }
 
-      const mcqCodonId = `${chapterData.chapterCode}-${updatedTopic.codonId.split('-').pop()}-Q${String(
-        updatedTopic.mcqSequence
-      ).padStart(2, '0')}`;
-      // 🔐 Duplicate safety check (Production Safe)
-      const existing = await MCQ.findOne({ codonId: mcqCodonId }).session(
-        session
-      );
 
-      if (existing) {
-        throw new Error('MCQ ID conflict detected. Please retry.');
+      // 🔐 Duplicate safety check (Production Safe)
+      let mcqCodonId;
+      let exists = true;
+
+      while (exists) {
+        const updatedTopic = await Topic.findByIdAndUpdate(
+          topicId,
+          { $inc: { mcqSequence: 1 } },
+          { new: true, session }
+        ).select('codonId mcqSequence');
+
+        mcqCodonId = `${chapterData.chapterCode}-${updatedTopic.codonId.split('-').pop()}-Q${String(
+          updatedTopic.mcqSequence
+        ).padStart(2, '0')}`;
+
+        const existing = await MCQ.findOne({ codonId: mcqCodonId }).session(
+          session
+        );
+
+        exists = !!existing;
       }
 
       if (testIds.length > 0) {
