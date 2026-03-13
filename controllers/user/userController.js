@@ -725,26 +725,34 @@ export const verifyEmail = async (req, res, next) => {
     const { email, otp } = req.body;
     const normalizedEmail = email.toLowerCase().trim();
 
-    // ✅ basic validation
     if (!email || !otp) {
       return res.status(400).json({
+        success: false,
         message: 'Email and OTP are required',
       });
     }
 
-    const user = await UserModel.findOne({ email: normalizedEmail });
+    const user = await UserModel.findOne({ email: normalizedEmail })
+      .select('+password')
+      .populate('collegeId', 'name')
+      .populate('stateId', 'name')
+      .populate('cityId', 'name')
+      .populate('countryId', 'name');
+
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
     }
 
-    // ✅ already verified
     if (user.isEmailVerified) {
       return res.status(400).json({
+        success: false,
         message: 'Email is already verified',
       });
     }
 
-    // ✅ OTP + expiry check
     if (
       !user.otp ||
       user.otp !== otp ||
@@ -752,41 +760,134 @@ export const verifyEmail = async (req, res, next) => {
       user.otpExpiresAt.getTime() < Date.now()
     ) {
       return res.status(400).json({
+        success: false,
         message: 'Invalid or expired OTP',
       });
     }
 
-    // ✅ activate user
+    // ✅ VERIFY EMAIL
     user.isEmailVerified = true;
     user.otp = null;
     user.otpExpiresAt = null;
     await user.save();
 
-    // ✅ block/inactive check before issuing token
     if (user.status !== 'active') {
       return res.status(403).json({
+        success: false,
         message: 'Account is blocked or inactive',
       });
     }
 
-    // const { accessToken, refreshToken } = generateToken(user._id);
+    const today = new Date();
 
-    // ✅ safe user object
-    const safeUser = {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      status: user.status,
-    };
+    // expire old subscription
+    await Subscription.updateMany(
+      { user: user._id, endDate: { $lt: today }, status: { $ne: 'expired' } },
+      { $set: { status: 'expired' } }
+    );
+
+    // active subscription
+    const activeSub = await Subscription.findOne({
+      user: user._id,
+      status: 'active',
+      endDate: { $gte: today },
+    });
+
+    const hasActiveSubscription = !!activeSub;
+
+    // 🔐 token
+    const { accessToken, refreshToken } = generateToken(user._id);
+
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    const safeUser = user.toObject();
+
+    delete safeUser.password;
+    delete safeUser.otp;
+    delete safeUser.otpExpiresAt;
+    delete safeUser.refreshToken;
 
     res.json({
+      success: true,
       message: 'Email verified successfully',
       user: safeUser,
+      accessToken,
+      refreshToken,
+      activesubscription: hasActiveSubscription,
     });
   } catch (error) {
     next(error);
   }
 };
+
+// export const verifyEmail = async (req, res, next) => {
+//   try {
+//     const { email, otp } = req.body;
+//     const normalizedEmail = email.toLowerCase().trim();
+
+//     // ✅ basic validation
+//     if (!email || !otp) {
+//       return res.status(400).json({
+//         message: 'Email and OTP are required',
+//       });
+//     }
+
+//     const user = await UserModel.findOne({ email: normalizedEmail });
+//     if (!user) {
+//       return res.status(404).json({ message: 'User not found' });
+//     }
+
+//     // ✅ already verified
+//     if (user.isEmailVerified) {
+//       return res.status(400).json({
+//         message: 'Email is already verified',
+//       });
+//     }
+
+//     // ✅ OTP + expiry check
+//     if (
+//       !user.otp ||
+//       user.otp !== otp ||
+//       !user.otpExpiresAt ||
+//       user.otpExpiresAt.getTime() < Date.now()
+//     ) {
+//       return res.status(400).json({
+//         message: 'Invalid or expired OTP',
+//       });
+//     }
+
+//     // ✅ activate user
+//     user.isEmailVerified = true;
+//     user.otp = null;
+//     user.otpExpiresAt = null;
+//     await user.save();
+
+//     // ✅ block/inactive check before issuing token
+//     if (user.status !== 'active') {
+//       return res.status(403).json({
+//         message: 'Account is blocked or inactive',
+//       });
+//     }
+
+//     // const { accessToken, refreshToken } = generateToken(user._id);
+
+//     // ✅ safe user object
+//     const safeUser = {
+//       _id: user._id,
+//       name: user.name,
+//       email: user.email,
+//       status: user.status,
+//     };
+
+//     res.json({
+//       message: 'Email verified successfully',
+//       user: safeUser,
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 
 export const verifyMobile = async (req, res, next) => {
   try {
@@ -4114,4 +4215,4 @@ export const applyPromoCode = async (req, res) => {
       error: error.message,
     });
   }
-};  
+};
