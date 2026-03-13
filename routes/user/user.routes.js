@@ -201,10 +201,10 @@ userRouter.post('/register', register);
  *         description: Email verified successfully
  */
 
-userRouter.post('/verify-email', otpLimiter, verifyEmail);
+userRouter.post('/verify-email',  verifyEmail);
 userRouter.post('/verify-mobile', otpLimiter, verifyMobile);
 
-userRouter.post('/resend-otp', otpLimiter, resendOtp);
+userRouter.post('/resend-otp',  resendOtp);
 /**
  * @swagger
  * /api/users/login:
