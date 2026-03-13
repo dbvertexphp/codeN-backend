@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Admin from '../../models/admin/admin.model.js';
 import generateToken from '../../config/generateToken.js';
 import PageModel from '../../models/admin/pageModel.js';
@@ -346,6 +347,51 @@ export const getDashboardStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to load dashboard stats',
+    });
+  }
+};
+
+export const deleteUserByAdmin = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // check admin
+    if (!req.admin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Admin access only',
+      });
+    }
+
+    // validate object id
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user id',
+      });
+    }
+
+    const user = await UserModel.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    await UserModel.findByIdAndDelete(userId);
+
+    res.status(200).json({
+      success: true,
+      message: 'User deleted successfully',
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete user',
     });
   }
 };

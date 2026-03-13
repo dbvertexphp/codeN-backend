@@ -12,6 +12,7 @@ import {
   changeAdminPassword,
   getAllUsers,
   getDashboardStats,
+  deleteUserByAdmin
 } from '../../controllers/admin/admin.controller.js';
 import upload from '../../middleware/upload.js';
 import { protect } from '../../middleware/authMiddleware.js';
@@ -26,6 +27,9 @@ router.post('/login', loginAdmin);
 router.get('/profile', protect, getAdminProfile);
 // routes/admin/dashboard.routes.js
 router.get('/dashboard/stats', protect, authorize('admin'), getDashboardStats);
+
+// delete user for admin side
+router.delete("/users/:userId", protect, deleteUserByAdmin);
 
 // Update admin profile (name, phone, image)
 router.put(
