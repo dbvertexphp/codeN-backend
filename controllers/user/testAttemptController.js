@@ -347,6 +347,8 @@
 // };
 
 import mongoose from 'mongoose';
+import Chapter from '../../models/admin/Chapter/chapter.model.js';
+import Topic from '../../models/admin/Topic/topic.model.js';
 import Test from '../../models/admin/Test/testModel.js';
 import TestAttempt from '../../models/user/testAttemptModel.js';
 import MCQ from '../../models/admin/MCQs/mcq.model.js';
@@ -1296,75 +1298,162 @@ export const submitQTestByChapter = async (req, res) => {
  * @desc   Get Q-Tests by Chapter (User Side)
  * @route  GET /api/user/tests/qtest/:chapterId
  */
-export const getQTestsByChapter = async (req, res) => {
+// export const getQTestsByChapter = async (req, res) => {
+//   try {
+//     const { chapterId } = req.params;
+//     const userId = req.user._id; // 👈 important
+//     if (!(await enforceSubscription(userId, res))) return;
+//     if (!chapterId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Chapter ID is required',
+//       });
+//     }
+
+//     // 1️⃣ Get all regular active tests
+//     const tests = await Test.find({
+//       testMode: 'regular',
+//       status: 'active',
+//     })
+//       .select('_id testTitle month academicYear mcqLimit')
+//       .lean();
+
+//     if (!tests.length) {
+//       return res.status(200).json({
+//         success: true,
+//         count: 0,
+//         data: [],
+//       });
+//     }
+
+//     const finalData = [];
+
+//     for (const test of tests) {
+//       // 2️⃣ Check MCQ count for this chapter
+//       const count = await MCQ.countDocuments({
+//         testId: test._id,
+//         chapterId,
+//         testMode: 'regular',
+//         status: 'active',
+//       });
+
+//       if (count > 0) {
+//         // 3️⃣ Find user's attempt for this test + chapter
+//         const attempt = await TestAttempt.findOne({
+//           userId,
+//           testId: test._id,
+//           chapterId,
+//           mode: 'regular',
+//         }).lean();
+
+//         let status = 'NOT_STARTED';
+
+//         if (attempt) {
+//           status = attempt.submittedAt ? 'COMPLETED' : 'IN_PROGRESS';
+//         }
+
+//         finalData.push({
+//           ...test,
+//           totalQuestions: count,
+//           status, // 👈 NEW FIELD
+//         });
+//       }
+//     }
+
+//     return res.status(200).json({
+//       success: true,
+//       count: finalData.length,
+//       data: finalData,
+//     });
+//   } catch (error) {
+//     console.error('Get QTests By Chapter Error:', error);
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch Q-Tests',
+//     });
+//   }
+// };
+
+export const getQTests = async (req, res) => {
   try {
-    const { chapterId } = req.params;
-    const userId = req.user._id; // 👈 important
-    if (!(await enforceSubscription(userId, res))) return;
-    if (!chapterId) {
-      return res.status(400).json({
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
         success: false,
-        message: 'Chapter ID is required',
+        message: 'Unauthorized',
       });
     }
 
-    // 1️⃣ Get all regular active tests
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    if (!(await enforceSubscription(userId, res))) return;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid id',
+      });
+    }
+
+    const chapter = await Chapter.findById(id).select('_id').lean();
+    const topic = await Topic.findById(id).select('_id').lean();
+
+    let filter = {};
+
+    if (chapter) {
+      filter.chapterId = id;
+    } else if (topic) {
+      filter.topicId = id;
+    } else {
+      return res.status(404).json({
+        success: false,
+        message: 'Chapter or Topic not found',
+      });
+    }
+
     const tests = await Test.find({
       testMode: 'regular',
       status: 'active',
-    })
-      .select('_id testTitle month academicYear mcqLimit')
-      .lean();
+    }).lean();
 
-    if (!tests.length) {
-      return res.status(200).json({
-        success: true,
-        count: 0,
-        data: [],
-      });
-    }
-
-    const finalData = [];
+    const result = [];
 
     for (const test of tests) {
-      // 2️⃣ Check MCQ count for this chapter
       const count = await MCQ.countDocuments({
-        testId: test._id,
-        chapterId,
-        testMode: 'regular',
+        testId: { $in: [test._id] },
+        ...filter,
         status: 'active',
       });
 
       if (count > 0) {
-        // 3️⃣ Find user's attempt for this test + chapter
         const attempt = await TestAttempt.findOne({
           userId,
           testId: test._id,
-          chapterId,
+          ...filter,
           mode: 'regular',
         }).lean();
 
-        let status = 'NOT_STARTED';
-
-        if (attempt) {
-          status = attempt.submittedAt ? 'COMPLETED' : 'IN_PROGRESS';
-        }
-
-        finalData.push({
-          ...test,
+        result.push({
+          _id: test._id,
+          testTitle: test.testTitle,
           totalQuestions: count,
-          status, // 👈 NEW FIELD
+          status: attempt
+            ? attempt.submittedAt
+              ? 'COMPLETED'
+              : 'IN_PROGRESS'
+            : 'NOT_STARTED',
         });
       }
     }
 
-    return res.status(200).json({
+    return res.json({
       success: true,
-      count: finalData.length,
-      data: finalData,
+      count: result.length,
+      data: result,
     });
   } catch (error) {
-    console.error('Get QTests By Chapter Error:', error);
+    console.error('Get QTests Error:', error);
+
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch Q-Tests',
