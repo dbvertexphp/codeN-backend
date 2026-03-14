@@ -1570,23 +1570,30 @@ export const getQTests = async (req, res) => {
 };
 // *************************************************************************************************************************************************************************
 
+
+
 // export const getMcqsByTestId = async (req, res) => {
 //   try {
-//     const { testId } = req.params;
+//     let { testId } = req.params; // ⚡ let use karo
 //     const userId = req.user._id;
 
-//     // 🔐 subscription check
 //     if (!(await enforceSubscription(userId, res))) return;
 
-//     // Validate ID
 //     if (!mongoose.Types.ObjectId.isValid(testId)) {
 //       return res.status(400).json({
 //         success: false,
-//         message: 'Invalid test id',
+//         message: 'Invalid id',
 //       });
 //     }
 
-//     // Check test exists
+//     // 🔎 Check if given id is MCQ id
+//     const mcq = await MCQ.findById(testId).lean();
+
+//     if (mcq) {
+//       testId = Array.isArray(mcq.testId) ? mcq.testId[0] : mcq.testId;
+//     }
+
+//     // Find Test
 //     const test = await Test.findOne({
 //       _id: testId,
 //       status: 'active',
@@ -1599,21 +1606,28 @@ export const getQTests = async (req, res) => {
 //       });
 //     }
 
-//     // Fetch MCQs
+//     // Fetch all MCQs
 //     const mcqs = await MCQ.find({
-//       testId: test._id,
+//       testId: { $in: [testId] }, // ⚡ important
 //       status: 'active',
 //     })
 //       .populate('tagId', 'name')
 //       .sort({ createdAt: 1 })
 //       .lean();
-
+//     const formattedMcqs = mcqs.map((m) => ({
+//       ...m,
+//       question: {
+//         mcqId: m._id, // ⚡ MCQ id question object me
+//         text: m.question?.text || '',
+//         images: m.question?.images || [],
+//       },
+//     }));
 //     return res.status(200).json({
 //       success: true,
 //       testId: test._id,
 //       testTitle: test.testTitle,
-//       totalQuestions: mcqs.length,
-//       data: mcqs,
+//       totalQuestions: formattedMcqs.length,
+//       data: formattedMcqs,
 //     });
 //   } catch (error) {
 //     console.error('getMcqsByTestId error:', error);
@@ -1624,68 +1638,87 @@ export const getQTests = async (req, res) => {
 //   }
 // };
 
+
 export const getMcqsByTestId = async (req, res) => {
   try {
-    let { testId } = req.params; // ⚡ let use karo
+    let { testId } = req.params;
     const userId = req.user._id;
 
+    // Subscription check
     if (!(await enforceSubscription(userId, res))) return;
 
+    // Validate id
     if (!mongoose.Types.ObjectId.isValid(testId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid id',
+        message: "Invalid id",
       });
     }
 
-    // 🔎 Check if given id is MCQ id
-    const mcq = await MCQ.findById(testId).lean();
+    let filter = { status: "active" };
+    let test = null;
 
-    if (mcq) {
-      testId = Array.isArray(mcq.testId) ? mcq.testId[0] : mcq.testId;
+    // 🔎 Check Topic
+    const topic = await Topic.findById(testId).select("_id").lean();
+
+    // 🔎 Check Chapter
+    const chapter = topic
+      ? null
+      : await Chapter.findById(testId).select("_id").lean();
+
+    if (topic) {
+      filter.topicId = topic._id;
+    } else if (chapter) {
+      filter.chapterId = chapter._id;
+    } else {
+
+      // 🔎 Maybe MCQ id
+      const mcq = await MCQ.findById(testId).lean();
+
+      if (mcq) {
+        testId = Array.isArray(mcq.testId) ? mcq.testId[0] : mcq.testId;
+        filter.testId = testId;
+      } else {
+        filter.testId = testId;
+      }
+
+      // Find Test
+      test = await Test.findOne({
+        _id: testId,
+        status: "active",
+      }).lean();
     }
 
-    // Find Test
-    const test = await Test.findOne({
-      _id: testId,
-      status: 'active',
-    }).lean();
-
-    if (!test) {
-      return res.status(404).json({
-        success: false,
-        message: 'Test not found',
-      });
-    }
-
-    // Fetch all MCQs
-    const mcqs = await MCQ.find({
-      testId: { $in: [testId] }, // ⚡ important
-      status: 'active',
-    })
-      .populate('tagId', 'name')
+    // Fetch MCQs
+    const mcqs = await MCQ.find(filter)
+      .populate("tagId", "name")
       .sort({ createdAt: 1 })
       .lean();
+
+    // Format MCQs
     const formattedMcqs = mcqs.map((m) => ({
       ...m,
       question: {
-        mcqId: m._id, // ⚡ MCQ id question object me
-        text: m.question?.text || '',
+        mcqId: m._id,
+        text: m.question?.text || "",
         images: m.question?.images || [],
       },
     }));
+
     return res.status(200).json({
       success: true,
-      testId: test._id,
-      testTitle: test.testTitle,
+      testId: test?._id || null,
+      testTitle: test?.testTitle || null,
       totalQuestions: formattedMcqs.length,
       data: formattedMcqs,
     });
+
   } catch (error) {
-    console.error('getMcqsByTestId error:', error);
+    console.error("getMcqsByTestId error:", error);
+
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch MCQs',
+      message: "Failed to fetch MCQs",
     });
   }
 };

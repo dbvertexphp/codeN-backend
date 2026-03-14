@@ -3462,6 +3462,8 @@ export const submitCustomTest = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
 export const restartCustomTest = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -4050,6 +4052,7 @@ export const getUserDashboardStats = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 export const getfaculty = async (req, res) => {
   try {
     const list = await Faculty.find();
