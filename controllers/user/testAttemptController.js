@@ -1374,6 +1374,99 @@ export const submitQTestByChapter = async (req, res) => {
 //   }
 // };
 
+// ********************************************************************************************************************************************************************************
+// get q-test for chapter id and get q-test for topic id
+// export const getQTests = async (req, res) => {
+//   try {
+//     if (!req.user || !req.user._id) {
+//       return res.status(401).json({
+//         success: false,
+//         message: 'Unauthorized',
+//       });
+//     }
+
+//     const { id } = req.params;
+//     const userId = req.user._id;
+
+//     if (!(await enforceSubscription(userId, res))) return;
+
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Invalid id',
+//       });
+//     }
+
+//     const chapter = await Chapter.findById(id).select('_id').lean();
+//     const topic = await Topic.findById(id).select('_id').lean();
+
+//     let filter = {};
+
+//     if (chapter) {
+//       filter.chapterId = id;
+//     } else if (topic) {
+//       filter.topicId = id;
+//     } else {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Chapter or Topic not found',
+//       });
+//     }
+
+//     const tests = await Test.find({
+//       testMode: 'regular',
+//       status: 'active',
+//     }).lean();
+
+//     const result = [];
+
+//     for (const test of tests) {
+//       const count = await MCQ.countDocuments({
+//         testId: { $in: [test._id] },
+//         ...filter,
+//         status: 'active',
+//       });
+
+//       if (count > 0) {
+//         const attempt = await TestAttempt.findOne({
+//           userId,
+//           testId: test._id,
+//           ...filter,
+//           mode: 'regular',
+//         }).lean();
+
+//         result.push({
+//           _id: test._id,
+//           testTitle: test.testTitle,
+//           totalQuestions: count,
+//           status: attempt
+//             ? attempt.submittedAt
+//               ? 'COMPLETED'
+//               : 'IN_PROGRESS'
+//             : 'NOT_STARTED',
+//         });
+//       }
+//     }
+
+//     return res.json({
+//       success: true,
+//       count: result.length,
+//       data: result,
+//     });
+//   } catch (error) {
+//     console.error('Get QTests Error:', error);
+
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Failed to fetch Q-Tests',
+//     });
+//   }
+// };
+// *********************************************************************************************************************************************************************************
+
+// ********************************************************************************************************************************************************************************
+// get q-test for chapter id and get q-test for topic id
+
 export const getQTests = async (req, res) => {
   try {
     if (!req.user || !req.user._id) {
@@ -1399,11 +1492,13 @@ export const getQTests = async (req, res) => {
     const topic = await Topic.findById(id).select('_id').lean();
 
     let filter = {};
+    let isTopic = false;
 
     if (chapter) {
       filter.chapterId = id;
     } else if (topic) {
       filter.topicId = id;
+      isTopic = true;
     } else {
       return res.status(404).json({
         success: false,
@@ -1419,11 +1514,13 @@ export const getQTests = async (req, res) => {
     const result = [];
 
     for (const test of tests) {
-      const count = await MCQ.countDocuments({
+      const mcqQuery = {
         testId: { $in: [test._id] },
         ...filter,
         status: 'active',
-      });
+      };
+
+      const count = await MCQ.countDocuments(mcqQuery);
 
       if (count > 0) {
         const attempt = await TestAttempt.findOne({
@@ -1432,6 +1529,16 @@ export const getQTests = async (req, res) => {
           ...filter,
           mode: 'regular',
         }).lean();
+
+        let mcqs = [];
+
+        // 🔥 अगर topicId आया है तो MCQs भी भेजेंगे
+        if (isTopic) {
+          mcqs = await MCQ.find(mcqQuery)
+            .populate('tagId', 'name')
+            .sort({ createdAt: 1 })
+            .lean();
+        }
 
         result.push({
           _id: test._id,
@@ -1442,6 +1549,7 @@ export const getQTests = async (req, res) => {
               ? 'COMPLETED'
               : 'IN_PROGRESS'
             : 'NOT_STARTED',
+          mcqs: isTopic ? mcqs : undefined,
         });
       }
     }
@@ -1460,6 +1568,7 @@ export const getQTests = async (req, res) => {
     });
   }
 };
+// *************************************************************************************************************************************************************************
 
 // export const getMcqsByTestId = async (req, res) => {
 //   try {
