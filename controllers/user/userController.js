@@ -25,6 +25,7 @@ import VideoProgress from '../../models/admin/Video/videoprogess.js';
 import Tag from '../../models/admin/Tags/tag.model.js';
 import TestAttempt from '../../models/user/testAttemptModel.js';
 import Bookmark from '../../models/admin/bookmarkModel.js';
+import Test from "../../models/admin/Test/testModel.js";
 import admin from 'firebase-admin';
 import Faculty from '../../models/admin/faculty/faculty.model.js';
 import CustomTestAttempt from '../../models/user/customTestAttempt.model.js';
@@ -3463,7 +3464,6 @@ export const submitCustomTest = async (req, res) => {
   }
 };
 
-
 export const restartCustomTest = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -3936,41 +3936,50 @@ export const getBookmarksList = async (req, res) => {
   }
 };
 
-// ✅ 3. Toggle Bookmark (Add/Remove Logic)
+
 // export const toggleBookmark = async (req, res) => {
 //   try {
-//     const { userId, type, itemId, category } = req.body;
+//     const { type, itemId, category } = req.body;
+//     const userId = req.user._id;
 
-//     if (!userId || !type || !category) {
-//       return res
-//         .status(400)
-//         .json({
-//           success: false,
-//           message: 'userId, type and category are required',
-//         });
+//     if (!itemId || !type) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'itemId and type are required',
+//       });
 //     }
 
-//     let query = { userId, type, category };
-//     if (type === 'mcq') query.mcqId = itemId;
-//     else if (type === 'topic') query.topicId = itemId;
-//     else if (type === 'chapter') query.chapterId = itemId;
-//     else if (type === 'sub-subject') query.subSubjectId = itemId;
+//     const query = { userId, type, itemId };
 
 //     const existing = await Bookmark.findOne(query);
 
 //     if (existing) {
-//       await Bookmark.findByIdAndDelete(existing._id);
-//       return res
-//         .status(200)
-//         .json({ success: true, message: `Removed from ${category}` });
-//     } else {
-//       await Bookmark.create(query);
-//       return res
-//         .status(201)
-//         .json({ success: true, message: `Added to ${category}` });
+//       await Bookmark.deleteOne(query);
+//       return res.status(200).json({
+//         success: true,
+//         isBookmarked: false,
+//         message: 'Removed from bookmarks',
+//       });
 //     }
+
+//     await Bookmark.create({
+//       userId,
+//       type,
+//       itemId,
+//       category,
+//     });
+
+//     return res.status(201).json({
+//       success: true,
+//       isBookmarked: true,
+//       message: 'Added to bookmarks',
+//     });
 //   } catch (error) {
-//     res.status(500).json({ success: false, message: error.message });
+//     console.error(error);
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
 //   }
 // };
 
@@ -3982,24 +3991,94 @@ export const toggleBookmark = async (req, res) => {
     if (!itemId || !type) {
       return res.status(400).json({
         success: false,
-        message: 'itemId and type are required',
+        message: "itemId and type are required",
       });
     }
 
+    /**
+     * 🔥 SPECIAL CASE
+     * type = q-test
+     * itemId = chapterId
+     * → bookmark / remove all regular tests of that chapter
+     */
+    if (type === "q-test") {
+
+      const tests = await Test.find({
+        chapterId: itemId,
+        testMode: "regular",
+        status: "active",
+      }).select("_id");
+
+      if (!tests.length) {
+        return res.status(404).json({
+          success: false,
+          message: "No regular q-tests found for this chapter",
+        });
+      }
+
+      const testIds = tests.map((t) => t._id);
+
+      const existingBookmarks = await Bookmark.find({
+        userId,
+        type: "q-test",
+        itemId: { $in: testIds },
+      });
+
+      /**
+       * 🔴 REMOVE ALL
+       */
+      if (existingBookmarks.length) {
+
+        await Bookmark.deleteMany({
+          userId,
+          type: "q-test",
+          itemId: { $in: testIds },
+        });
+
+        return res.status(200).json({
+          success: true,
+          isBookmarked: false,
+          message: "Q-tests removed from bookmarks",
+        });
+      }
+
+      /**
+       * 🟢 ADD ALL
+       */
+      const bulkBookmarks = testIds.map((id) => ({
+        userId,
+        type: "q-test",
+        itemId: id,
+        category,
+      }));
+
+      await Bookmark.insertMany(bulkBookmarks, { ordered: false });
+
+      return res.status(201).json({
+        success: true,
+        isBookmarked: true,
+        message: `${testIds.length} q-tests bookmarked`,
+      });
+    }
+
+    /**
+     * 🔹 NORMAL BOOKMARK TOGGLE
+     */
     const query = { userId, type, itemId };
 
     const existing = await Bookmark.findOne(query);
 
     if (existing) {
       await Bookmark.deleteOne(query);
+
       return res.status(200).json({
         success: true,
         isBookmarked: false,
-        message: 'Removed from bookmarks',
+        message: "Removed from bookmarks",
       });
     }
 
-    await Bookmark.create({
+    const bookmark = await Bookmark.create({
       userId,
       type,
       itemId,
@@ -4009,8 +4088,10 @@ export const toggleBookmark = async (req, res) => {
     return res.status(201).json({
       success: true,
       isBookmarked: true,
-      message: 'Added to bookmarks',
+      message: "Added to bookmarks",
+      bookmark,
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({

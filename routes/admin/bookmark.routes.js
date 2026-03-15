@@ -1,20 +1,3 @@
-// import express from 'express';
-// import {
-//   addBookmark,
-//   removeBookmark,
-//   getMyBookmarks,
-//   toggleBookmark,
-// } from '../../controllers//admin/bookmarkController.js';
-// import { protect } from '../../middleware/authMiddleware.js';
-
-// const router = express.Router();
-
-// router.post('/', protect, addBookmark);
-// router.delete('/', protect, removeBookmark);
-// router.get('/', protect, getMyBookmarks);
-// router.post('/toggle', protect, toggleBookmark);
-
-// export default router;
 
 
 
@@ -24,7 +7,7 @@ import {
   removeBookmark,
   getMyBookmarks,
   toggleBookmark,
-  getBookmarkSummary, getBookmarksList 
+  getBookmarkSummary, getBookmarksList
 } from '../../controllers/admin/bookmarkController.js'; // Fixed double slash
 import { protect } from '../../middleware/authMiddleware.js';
 
