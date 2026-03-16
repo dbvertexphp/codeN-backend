@@ -1,4 +1,3 @@
-
 import mongoose from 'mongoose';
 
 const bookmarkSchema = new mongoose.Schema(
@@ -12,7 +11,7 @@ const bookmarkSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ['mcq', 'chapter', 'topic', 'sub-subject','video', 'q-test'],
+      enum: ['mcq', 'chapter', 'topic', 'sub-subject', 'video', 'q-test'],
       required: true,
     },
 
@@ -26,6 +25,11 @@ const bookmarkSchema = new mongoose.Schema(
       enum: ['important', 'veryimportant', 'mostimportant'],
       required: true,
     },
+    // chapterId: {
+    //   type: mongoose.Schema.Types.ObjectId,
+    //   ref: 'Chapter',
+    //   default: null,
+    // },
   },
   { timestamps: true }
 );

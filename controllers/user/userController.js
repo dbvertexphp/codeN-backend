@@ -3737,8 +3737,6 @@ export const removeBookmark = async (req, res) => {
  * @route   GET /api/bookmarks
  */
 
-
-
 // export const getMyBookmarks = async (req, res) => {
 //   try {
 //     const bookmarks = await Bookmark.find({
@@ -3826,7 +3824,6 @@ export const removeBookmark = async (req, res) => {
 //   }
 // };
 
-
 export const getMyBookmarks = async (req, res) => {
   try {
     const bookmarks = await Bookmark.find({
@@ -3846,6 +3843,13 @@ export const getMyBookmarks = async (req, res) => {
             .select('question options difficulty chapterId')
             .lean();
 
+          // 🔥 agar itemId mcq nahi hai to chapterId samjho
+          if (!rawData) {
+            rawData = await MCQ.findOne({ chapterId: bookmark.itemId })
+              .select('question options difficulty chapterId')
+              .lean();
+          }
+
           if (rawData) {
             formattedItem = {
               _id: rawData._id,
@@ -3853,7 +3857,7 @@ export const getMyBookmarks = async (req, res) => {
               images: rawData.question?.images || [],
               options: rawData.options || [],
               difficulty: rawData.difficulty,
-              chapterId: rawData.chapterId || null, // ✅ chapter id
+              chapterId: rawData.chapterId || bookmark.itemId,
             };
           }
         }
@@ -3881,12 +3885,18 @@ export const getMyBookmarks = async (req, res) => {
             .select('name description chapterId')
             .lean();
 
+          if (!rawData) {
+            rawData = await Topic.findOne({ chapterId: bookmark.itemId })
+              .select('name description chapterId')
+              .lean();
+          }
+
           if (rawData) {
             formattedItem = {
               _id: rawData._id,
               name: rawData.name,
               description: rawData.description,
-              chapterId: rawData.chapterId || null,
+              chapterId: rawData.chapterId || bookmark.itemId,
             };
           }
         }
@@ -3897,33 +3907,82 @@ export const getMyBookmarks = async (req, res) => {
             .select('name image')
             .lean();
 
+          if (!rawData) {
+            const topic = await Topic.findOne({ chapterId: bookmark.itemId })
+              .select('subSubjectId')
+              .lean();
+
+            if (topic) {
+              rawData = await SubSubject.findById(topic.subSubjectId)
+                .select('name image')
+                .lean();
+            }
+          }
+
           if (rawData) {
             formattedItem = {
               _id: rawData._id,
               name: rawData.name,
               image: rawData.image || null,
+              chapterId: bookmark.itemId,
             };
           }
         }
 
         // ✅ Q TEST BOOKMARK
-        else if (bookmark.type === 'q-test') {
-          rawData = await Test.findById(bookmark.itemId)
-            .select('name chapterId')
-            .lean();
+       else if (bookmark.type === 'q-test') {
 
-          if (rawData) {
-            formattedItem = {
-              _id: rawData._id,
-              name: rawData.name,
-              chapterId: rawData.chapterId || null,
-            };
-          }
-        }
+  rawData = await Test.findById(bookmark.itemId)
+    .select('name chapterId')
+    .lean();
+
+  // 🔥 agar itemId testId nahi hai to chapterId samjho
+  if (!rawData) {
+    rawData = await Test.findOne({ chapterId: bookmark.itemId })
+      .select('name chapterId')
+      .lean();
+  }
+
+  if (rawData) {
+    formattedItem = {
+      _id: rawData._id,
+      name: rawData.name,
+      chapterId: rawData.chapterId || bookmark.itemId
+    };
+  }
+}
+
+        // ✅ VIDEO BOOKMARK
+      else if (bookmark.type === 'video') {
+
+  rawData = await Video.findById(bookmark.itemId)
+    .select('title url thumbnail chapterId')
+    .lean();
+
+  // 🔥 agar itemId videoId nahi hai to chapterId samjho
+  if (!rawData) {
+    rawData = await Video.findOne({ chapterId: bookmark.itemId })
+      .select('title url thumbnail chapterId')
+      .lean();
+  }
+
+  if (rawData) {
+    formattedItem = {
+      _id: rawData._id,
+      name: rawData.title,
+      videoUrl: rawData.url,
+      thumbnail: rawData.thumbnail || null,
+      chapterId: rawData.chapterId || bookmark.itemId
+    };
+  }
+}
 
         return {
           ...bookmark,
-          itemData: formattedItem,
+          chapterId: formattedItem?.chapterId || bookmark.chapterId || null,
+          itemData: formattedItem
+            ? { ...formattedItem, chapterId: undefined } // itemData se chapterId hata diya
+            : null,
         };
       })
     );
@@ -3933,7 +3992,6 @@ export const getMyBookmarks = async (req, res) => {
       count: populatedBookmarks.length,
       data: populatedBookmarks,
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -3941,7 +3999,6 @@ export const getMyBookmarks = async (req, res) => {
     });
   }
 };
-
 
 export const getBookmarkSummary = async (req, res) => {
   try {
@@ -4292,6 +4349,7 @@ export const toggleBookmark = async (req, res) => {
           type: 'q-test',
           itemId: id,
           category,
+          chapterId: itemId,
         }));
 
         await Bookmark.insertMany(bulkBookmarks, { ordered: false });
@@ -4337,17 +4395,132 @@ export const toggleBookmark = async (req, res) => {
        * IF NOT EXISTS → ADD
        */
 
+      const test = await Test.findById(itemId).select('chapterId');
+
       const bookmark = await Bookmark.create({
         userId,
         type,
         itemId,
         category,
+        chapterId: test?.chapterId || null,
       });
 
       return res.status(201).json({
         success: true,
         isBookmarked: true,
         message: 'Q-test bookmarked',
+        bookmark,
+      });
+    }
+
+    /**
+     * =====================================
+     * SPECIAL CASE → VIDEO
+     * =====================================
+     */
+
+    if (type === 'video') {
+      /**
+       * CHECK IF itemId IS CHAPTER
+       */
+
+      const videos = await Video.find({
+        chapterId: itemId,
+      }).select('_id');
+
+      /**
+       * =====================================
+       * CASE 1 → CHAPTER BULK BOOKMARK
+       * =====================================
+       */
+
+      if (videos.length) {
+        const videoIds = videos.map((v) => v._id);
+
+        const existingBookmarks = await Bookmark.find({
+          userId,
+          type: 'video',
+          itemId: { $in: videoIds },
+        });
+
+        /**
+         * REMOVE ALL
+         */
+
+        if (existingBookmarks.length) {
+          await Bookmark.deleteMany({
+            userId,
+            type: 'video',
+            itemId: { $in: videoIds },
+          });
+
+          return res.status(200).json({
+            success: true,
+            isBookmarked: false,
+            message: 'All chapter videos removed from bookmarks',
+          });
+        }
+
+        /**
+         * ADD ALL
+         */
+
+        const bulkBookmarks = videoIds.map((id) => ({
+          userId,
+          type: 'video',
+          itemId: id,
+          category,
+        }));
+
+        await Bookmark.insertMany(bulkBookmarks, { ordered: false });
+
+        return res.status(201).json({
+          success: true,
+          isBookmarked: true,
+          message: `${bulkBookmarks.length} videos bookmarked`,
+        });
+      }
+
+      /**
+       * =====================================
+       * CASE 2 → SINGLE VIDEO TOGGLE
+       * =====================================
+       */
+
+      const existing = await Bookmark.findOne({
+        userId,
+        type,
+        itemId,
+      });
+
+      if (existing) {
+        await Bookmark.deleteOne({
+          userId,
+          type,
+          itemId,
+        });
+
+        return res.status(200).json({
+          success: true,
+          isBookmarked: false,
+          message: 'Video removed from bookmarks',
+        });
+      }
+
+      const test = await Test.findById(itemId).select('chapterId');
+
+      const bookmark = await Bookmark.create({
+        userId,
+        type,
+        itemId,
+        category,
+        chapterId: test?.chapterId || null,
+      });
+
+      return res.status(201).json({
+        success: true,
+        isBookmarked: true,
+        message: 'Video bookmarked',
         bookmark,
       });
     }
@@ -4372,11 +4545,14 @@ export const toggleBookmark = async (req, res) => {
       });
     }
 
+    const test = await Test.findById(itemId).select('chapterId');
+
     const bookmark = await Bookmark.create({
       userId,
       type,
       itemId,
       category,
+      chapterId: test?.chapterId || null,
     });
 
     return res.status(201).json({
