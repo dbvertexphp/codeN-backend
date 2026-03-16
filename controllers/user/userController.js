@@ -25,7 +25,7 @@ import VideoProgress from '../../models/admin/Video/videoprogess.js';
 import Tag from '../../models/admin/Tags/tag.model.js';
 import TestAttempt from '../../models/user/testAttemptModel.js';
 import Bookmark from '../../models/admin/bookmarkModel.js';
-import Test from "../../models/admin/Test/testModel.js";
+import Test from '../../models/admin/Test/testModel.js';
 import admin from 'firebase-admin';
 import Faculty from '../../models/admin/faculty/faculty.model.js';
 import CustomTestAttempt from '../../models/user/customTestAttempt.model.js';
@@ -3737,6 +3737,8 @@ export const removeBookmark = async (req, res) => {
  * @route   GET /api/bookmarks
  */
 
+
+
 // export const getMyBookmarks = async (req, res) => {
 //   try {
 //     const bookmarks = await Bookmark.find({
@@ -3747,35 +3749,66 @@ export const removeBookmark = async (req, res) => {
 
 //     const populatedBookmarks = await Promise.all(
 //       bookmarks.map(async (bookmark) => {
-//         let itemData = null;
+//         let rawData = null;
+//         let formattedItem = null;
 
 //         if (bookmark.type === 'mcq') {
-//           itemData = await MCQ.findById(bookmark.itemId)
+//           rawData = await MCQ.findById(bookmark.itemId)
 //             .select('question options difficulty')
 //             .lean();
-//         }
 
-//         if (bookmark.type === 'chapter') {
-//           itemData = await Chapter.findById(bookmark.itemId)
+//           if (rawData) {
+//             // Yahan hum question object ko khatam kar rahe hain
+//             formattedItem = {
+//               _id: rawData._id,
+//               name: rawData.question?.text || '', // text ab 'name' hai
+//               images: rawData.question?.images || [], // images ab bahar hain
+//               options: rawData.options || [],
+//               difficulty: rawData.difficulty,
+//             };
+//           }
+//         } else if (bookmark.type === 'chapter') {
+//           rawData = await Chapter.findById(bookmark.itemId)
 //             .select('name description image')
 //             .lean();
-//         }
 
-//         if (bookmark.type === 'topic') {
-//           itemData = await Topic.findById(bookmark.itemId)
+//           if (rawData) {
+//             formattedItem = {
+//               _id: rawData._id,
+//               name: rawData.name,
+//               description: rawData.description,
+//               image: rawData.image || null,
+//             };
+//           }
+//         } else if (bookmark.type === 'topic') {
+//           rawData = await Topic.findById(bookmark.itemId)
 //             .select('name description')
 //             .lean();
-//         }
 
-//         if (bookmark.type === 'sub-subject') {
-//           itemData = await SubSubject.findById(bookmark.itemId)
+//           if (rawData) {
+//             formattedItem = {
+//               _id: rawData._id,
+//               name: rawData.name,
+//               description: rawData.description,
+//             };
+//           }
+//         } else if (bookmark.type === 'sub-subject') {
+//           rawData = await SubSubject.findById(bookmark.itemId)
 //             .select('name image')
 //             .lean();
+
+//           if (rawData) {
+//             formattedItem = {
+//               _id: rawData._id,
+//               name: rawData.name,
+//               image: rawData.image || null,
+//             };
+//           }
 //         }
 
 //         return {
 //           ...bookmark,
-//           itemData,
+//           itemData: formattedItem, // Ab MCQ aur Chapter dono mein 'name' common hai
 //         };
 //       })
 //     );
@@ -3793,6 +3826,7 @@ export const removeBookmark = async (req, res) => {
 //   }
 // };
 
+
 export const getMyBookmarks = async (req, res) => {
   try {
     const bookmarks = await Bookmark.find({
@@ -3806,22 +3840,26 @@ export const getMyBookmarks = async (req, res) => {
         let rawData = null;
         let formattedItem = null;
 
+        // MCQ BOOKMARK
         if (bookmark.type === 'mcq') {
           rawData = await MCQ.findById(bookmark.itemId)
-            .select('question options difficulty')
+            .select('question options difficulty chapterId')
             .lean();
 
           if (rawData) {
-            // Yahan hum question object ko khatam kar rahe hain
             formattedItem = {
               _id: rawData._id,
-              name: rawData.question?.text || '', // text ab 'name' hai
-              images: rawData.question?.images || [], // images ab bahar hain
+              name: rawData.question?.text || '',
+              images: rawData.question?.images || [],
               options: rawData.options || [],
               difficulty: rawData.difficulty,
+              chapterId: rawData.chapterId || null, // ✅ chapter id
             };
           }
-        } else if (bookmark.type === 'chapter') {
+        }
+
+        // CHAPTER BOOKMARK
+        else if (bookmark.type === 'chapter') {
           rawData = await Chapter.findById(bookmark.itemId)
             .select('name description image')
             .lean();
@@ -3832,11 +3870,15 @@ export const getMyBookmarks = async (req, res) => {
               name: rawData.name,
               description: rawData.description,
               image: rawData.image || null,
+              chapterId: rawData._id, // chapter ka id khud hi
             };
           }
-        } else if (bookmark.type === 'topic') {
+        }
+
+        // TOPIC BOOKMARK
+        else if (bookmark.type === 'topic') {
           rawData = await Topic.findById(bookmark.itemId)
-            .select('name description')
+            .select('name description chapterId')
             .lean();
 
           if (rawData) {
@@ -3844,9 +3886,13 @@ export const getMyBookmarks = async (req, res) => {
               _id: rawData._id,
               name: rawData.name,
               description: rawData.description,
+              chapterId: rawData.chapterId || null,
             };
           }
-        } else if (bookmark.type === 'sub-subject') {
+        }
+
+        // SUB SUBJECT BOOKMARK
+        else if (bookmark.type === 'sub-subject') {
           rawData = await SubSubject.findById(bookmark.itemId)
             .select('name image')
             .lean();
@@ -3860,9 +3906,24 @@ export const getMyBookmarks = async (req, res) => {
           }
         }
 
+        // ✅ Q TEST BOOKMARK
+        else if (bookmark.type === 'q-test') {
+          rawData = await Test.findById(bookmark.itemId)
+            .select('name chapterId')
+            .lean();
+
+          if (rawData) {
+            formattedItem = {
+              _id: rawData._id,
+              name: rawData.name,
+              chapterId: rawData.chapterId || null,
+            };
+          }
+        }
+
         return {
           ...bookmark,
-          itemData: formattedItem, // Ab MCQ aur Chapter dono mein 'name' common hai
+          itemData: formattedItem,
         };
       })
     );
@@ -3872,6 +3933,7 @@ export const getMyBookmarks = async (req, res) => {
       count: populatedBookmarks.length,
       data: populatedBookmarks,
     });
+
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -3879,6 +3941,7 @@ export const getMyBookmarks = async (req, res) => {
     });
   }
 };
+
 
 export const getBookmarkSummary = async (req, res) => {
   try {
@@ -3936,7 +3999,6 @@ export const getBookmarksList = async (req, res) => {
   }
 };
 
-
 // export const toggleBookmark = async (req, res) => {
 //   try {
 //     const { type, itemId, category } = req.body;
@@ -3983,87 +4045,319 @@ export const getBookmarksList = async (req, res) => {
 //   }
 // };
 
+// export const toggleBookmark = async (req, res) => {
+//   try {
+//     const { type, itemId, category } = req.body;
+//     const userId = req.user._id;
+
+//     if (!itemId || !type) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "itemId and type are required",
+//       });
+//     }
+
+//     /**
+//      * 🔥 SPECIAL CASE
+//      * type = q-test
+//      */
+//     if (type === "q-test") {
+
+//       // check if itemId is a chapter
+//       const tests = await Test.find({
+//         chapterId: itemId,
+//         testMode: "regular",
+//         status: "active",
+//       }).select("_id");
+
+//       /**
+//        * =============================
+//        * CASE 1 → CHAPTER BULK BOOKMARK
+//        * =============================
+//        */
+//       if (tests.length) {
+
+//         const testIds = tests.map((t) => t._id);
+
+//         const existingBookmarks = await Bookmark.find({
+//           userId,
+//           type: "q-test",
+//           itemId: { $in: testIds },
+//         });
+
+//         // 🔴 REMOVE ALL
+//         if (existingBookmarks.length) {
+
+//           await Bookmark.deleteMany({
+//             userId,
+//             type: "q-test",
+//             itemId: { $in: testIds },
+//           });
+
+//           return res.status(200).json({
+//             success: true,
+//             isBookmarked: false,
+//             message: "Q-tests removed from bookmarks",
+//           });
+//         }
+
+//         // 🟢 ADD ALL
+//         const bulkBookmarks = testIds.map((id) => ({
+//           userId,
+//           type: "q-test",
+//           itemId: id,
+//           category,
+//         }));
+
+//         await Bookmark.insertMany(bulkBookmarks, { ordered: false });
+
+//         return res.status(201).json({
+//           success: true,
+//           isBookmarked: true,
+//           message: `${testIds.length} q-tests bookmarked`,
+//         });
+//       }
+
+//       /**
+//        * =============================
+//        * CASE 2 → SINGLE TEST TOGGLE
+//        * =============================
+//        */
+
+//       const query = { userId, type, itemId };
+
+//       const existing = await Bookmark.findOne(query);
+
+//       if (existing) {
+//         await Bookmark.deleteOne(query);
+
+//         return res.status(200).json({
+//           success: true,
+//           isBookmarked: false,
+//           message: "Q-test removed from bookmarks",
+//         });
+//       }
+
+//       const bookmark = await Bookmark.create({
+//         userId,
+//         type,
+//         itemId,
+//         category,
+//       });
+
+//       return res.status(201).json({
+//         success: true,
+//         isBookmarked: true,
+//         message: "Q-test bookmarked",
+//         bookmark,
+//       });
+//     }
+
+//     /**
+//      * 🔹 NORMAL BOOKMARK TOGGLE
+//      */
+//     const query = { userId, type, itemId };
+
+//     const existing = await Bookmark.findOne(query);
+
+//     if (existing) {
+//       await Bookmark.deleteOne(query);
+
+//       return res.status(200).json({
+//         success: true,
+//         isBookmarked: false,
+//         message: "Removed from bookmarks",
+//       });
+//     }
+
+//     const bookmark = await Bookmark.create({
+//       userId,
+//       type,
+//       itemId,
+//       category,
+//     });
+
+//     return res.status(201).json({
+//       success: true,
+//       isBookmarked: true,
+//       message: "Added to bookmarks",
+//       bookmark,
+//     });
+
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
 export const toggleBookmark = async (req, res) => {
   try {
-    const { type, itemId, category } = req.body;
+    const { _id, type, itemId, category } = req.body;
     const userId = req.user._id;
+
+    /**
+     * =====================================
+     * REMOVE USING BOOKMARK _id
+     * =====================================
+     */
+
+    if (_id) {
+      const bookmark = await Bookmark.findOne({
+        _id,
+        userId,
+      });
+
+      if (!bookmark) {
+        return res.status(404).json({
+          success: false,
+          message: 'Bookmark not found',
+        });
+      }
+
+      await Bookmark.deleteOne({ _id });
+
+      return res.status(200).json({
+        success: true,
+        isBookmarked: false,
+        message: 'Bookmark removed successfully',
+      });
+    }
 
     if (!itemId || !type) {
       return res.status(400).json({
         success: false,
-        message: "itemId and type are required",
+        message: 'itemId and type are required',
       });
     }
 
     /**
-     * 🔥 SPECIAL CASE
-     * type = q-test
-     * itemId = chapterId
-     * → bookmark / remove all regular tests of that chapter
+     * =====================================
+     * SPECIAL CASE → Q-TEST
+     * =====================================
      */
-    if (type === "q-test") {
+
+    if (type === 'q-test') {
+      /**
+       * CHECK IF itemId IS A CHAPTER
+       */
 
       const tests = await Test.find({
         chapterId: itemId,
-        testMode: "regular",
-        status: "active",
-      }).select("_id");
+        testMode: 'regular',
+        status: 'active',
+      }).select('_id');
 
-      if (!tests.length) {
-        return res.status(404).json({
-          success: false,
-          message: "No regular q-tests found for this chapter",
+      /**
+       * =====================================
+       * CASE 1 → CHAPTER BULK BOOKMARK
+       * =====================================
+       */
+
+      if (tests.length) {
+        const testIds = tests.map((t) => t._id);
+
+        const existingBookmarks = await Bookmark.find({
+          userId,
+          type: 'q-test',
+          itemId: { $in: testIds },
+        });
+
+        /**
+         * REMOVE ALL
+         */
+
+        if (existingBookmarks.length) {
+          await Bookmark.deleteMany({
+            userId,
+            type: 'q-test',
+            itemId: { $in: testIds },
+          });
+
+          return res.status(200).json({
+            success: true,
+            isBookmarked: false,
+            message: 'All q-tests removed from bookmarks',
+          });
+        }
+
+        /**
+         * ADD ALL
+         */
+
+        const bulkBookmarks = testIds.map((id) => ({
+          userId,
+          type: 'q-test',
+          itemId: id,
+          category,
+        }));
+
+        await Bookmark.insertMany(bulkBookmarks, { ordered: false });
+
+        return res.status(201).json({
+          success: true,
+          isBookmarked: true,
+          message: `${bulkBookmarks.length} q-tests bookmarked`,
         });
       }
 
-      const testIds = tests.map((t) => t._id);
+      /**
+       * =====================================
+       * CASE 2 → SINGLE TEST REMOVE / ADD
+       * =====================================
+       */
 
-      const existingBookmarks = await Bookmark.find({
+      const existing = await Bookmark.findOne({
         userId,
-        type: "q-test",
-        itemId: { $in: testIds },
+        type,
+        itemId,
       });
 
       /**
-       * 🔴 REMOVE ALL
+       * IF BOOKMARK EXISTS → REMOVE
        */
-      if (existingBookmarks.length) {
 
-        await Bookmark.deleteMany({
+      if (existing) {
+        await Bookmark.deleteOne({
           userId,
-          type: "q-test",
-          itemId: { $in: testIds },
+          type,
+          itemId,
         });
 
         return res.status(200).json({
           success: true,
           isBookmarked: false,
-          message: "Q-tests removed from bookmarks",
+          message: 'Q-test removed from bookmarks',
         });
       }
 
       /**
-       * 🟢 ADD ALL
+       * IF NOT EXISTS → ADD
        */
-      const bulkBookmarks = testIds.map((id) => ({
-        userId,
-        type: "q-test",
-        itemId: id,
-        category,
-      }));
 
-      await Bookmark.insertMany(bulkBookmarks, { ordered: false });
+      const bookmark = await Bookmark.create({
+        userId,
+        type,
+        itemId,
+        category,
+      });
 
       return res.status(201).json({
         success: true,
         isBookmarked: true,
-        message: `${testIds.length} q-tests bookmarked`,
+        message: 'Q-test bookmarked',
+        bookmark,
       });
     }
 
     /**
-     * 🔹 NORMAL BOOKMARK TOGGLE
+     * =====================================
+     * NORMAL BOOKMARK TOGGLE
+     * =====================================
      */
+
     const query = { userId, type, itemId };
 
     const existing = await Bookmark.findOne(query);
@@ -4074,7 +4368,7 @@ export const toggleBookmark = async (req, res) => {
       return res.status(200).json({
         success: true,
         isBookmarked: false,
-        message: "Removed from bookmarks",
+        message: 'Removed from bookmarks',
       });
     }
 
@@ -4088,12 +4382,12 @@ export const toggleBookmark = async (req, res) => {
     return res.status(201).json({
       success: true,
       isBookmarked: true,
-      message: "Added to bookmarks",
+      message: 'Added to bookmarks',
       bookmark,
     });
-
   } catch (error) {
-    console.error(error);
+    console.error('Toggle Bookmark Error:', error);
+
     res.status(500).json({
       success: false,
       message: error.message,
